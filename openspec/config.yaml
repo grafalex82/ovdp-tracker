@@ -1,32 +1,29 @@
 schema: spec-driven
 
-# Project context (optional)
-# Add only constraints that should guide OpenSpec artifacts and workflows.
-# Include constraints an agent cannot infer by reading the code.
-# Keep general project documentation and discoverable codebase facts out.
-# Example:
-#   context: |
-#     Designs and tasks must cover Windows, macOS, and Linux
-#     Write all artifacts in Spanish
+context: |
+  Небольшой пет-проект для единоличного использования: трекер ОВДП
+  (облигаций внутреннего государственного займа Украины).
+  Пользователь добавляет облигации, отслеживает даты покупки и погашения,
+  полученную и ожидаемую прибыль, смотрит статистику доходности
+  за различные периоды и планирует будущие покупки.
+  Предпочитай простые, понятные решения и минимальную архитектуру.
+  Не добавляй сложные абстракции, инфраструктуру и зависимости без
+  конкретной необходимости для текущей задачи. Используй возможности
+  выбранного стека, прежде чем подключать дополнительные библиотеки.
+  Не закладывай многопользовательский режим и масштабирование впрок.
+  Пиши артефакты OpenSpec на русском языке.
 
-# Per-artifact rules (optional)
-# Add custom rules for specific artifacts.
-# Example:
-#   rules:
-#     proposal:
-#       - Keep proposals under 500 words
-#       - Always state what is out of scope
-#     tasks:
-#       - Break tasks into chunks of max 2 hours
-
-# Per-operation guidance (optional)
-# Add advisory guidance for how apply and archive work should be conducted.
-# This is separate from artifact rules above.
-# Example:
-#   operations:
-#     apply:
-#       guidance:
-#         - Keep test summaries concise
-#     archive:
-#       guidance:
-#         - Summarize the archive outcome before finishing
+rules:
+  proposal:
+    - Кратко описывай пользу для единственного пользователя и границы изменения.
+    - Не расширяй задачу функциями, которые не нужны для заявленного сценария.
+  design:
+    - Выбирай самое простое решение, достаточное для текущих требований.
+    - Обосновывай новые зависимости и дополнительные архитектурные слои.
+  specs:
+    - Формулируй проверяемое поведение через конкретные пользовательские сценарии.
+    - Для расчётов явно указывай исходные данные, период, единицы и правила округления.
+    - Различай фактически полученную и ожидаемую прибыль, а также запланированные и совершённые покупки.
+  tasks:
+    - Разбивай работу на небольшие конкретные задачи без лишних подготовительных этапов.
+    - Включай проверки, соразмерные изменению; для финансовых расчётов используй примеры с известным результатом.
