@@ -31,7 +31,9 @@ def saved_purchase(database, lot):
         ("redemption", lot["maturity_date"]), ("coupon", lot["maturity_date"]),
         ("coupon", "2024-08-15"), ("coupon", "2023-06-01"),
     ]:
-        database.add_scheduled_payment(issue_id=lot["issue_id"], kind=kind, planned_date=day)
+        database.add_scheduled_payment(
+            amount="1000" if kind == "redemption" else "80", issue_id=lot["issue_id"], kind=kind, planned_date=day
+        )
 
     # Return a purchase whose calendar can be shared by later purchases of its ISIN.
     return lot
@@ -41,7 +43,7 @@ def saved_purchase(database, lot):
 def form(issue_data, lot_data):
     return {
         **issue_data, **lot_data, "quantity": "3", "purchase_price": "1000,01", "bank_name": "Банк А",
-        "coupon_dates": "2027-06-01\n2024-08-15", "maturity_manual": "1",
+        "coupon_schedule": "2027-06-01 80\n2024-08-15 80", "issue_mode": "manual", "infer_maturity_from_coupons": "0",
     }
 
 
@@ -183,13 +185,18 @@ def test_active_and_closed_history_follow_actual_operations(app, database, lot, 
         )
     elif operation in ("redemption", "future-redemption", "coupon"):
         kind = "coupon" if operation == "coupon" else "redemption"
-        event = database.add_scheduled_payment(issue_id=lot["issue_id"], kind=kind, planned_date=lot["maturity_date"])
+        event = database.add_scheduled_payment(
+            amount="1000" if kind == "redemption" else "80",
+            issue_id=lot["issue_id"], kind=kind, planned_date=lot["maturity_date"]
+        )
         database.add_actual_payment(
             lot_id=lot["id"], scheduled_payment_id=event["id"], amount="795",
             actual_date="2026-11-01" if operation == "future-redemption" else "2026-10-31",
         )
     elif operation == "past-plan":
-        database.add_scheduled_payment(issue_id=lot["issue_id"], kind="redemption", planned_date=lot["maturity_date"])
+        database.add_scheduled_payment(
+            amount="1000", issue_id=lot["issue_id"], kind="redemption", planned_date=lot["maturity_date"]
+        )
 
     # Display the purchase in exactly the appropriate list and retain its direct card.
     with app.test_client() as client:
@@ -292,7 +299,7 @@ def test_list_and_card_escape_user_supplied_names(app, database, issue_data, lot
     with app.test_client() as client:
         for path in ("/", f'/purchases/{lot["id"]}'):
             html = client.get(path).get_data(as_text=True)
-            assert isin not in html
+            assert isin.upper() not in html
             assert bank_name not in html
-            assert isin in unescape(html)
+            assert isin.upper() in unescape(html)
             assert bank_name in unescape(html)

@@ -25,7 +25,11 @@
         <dt>Цена одной облигации</dt><dd>{{ lot.purchase_price|money }} {{ lot.currency }}</dd>
         <dt>Стоимость покупки</dt><dd>{{ lot.purchase_total|money }} {{ lot.currency }}</dd>
         <dt>Номинал одной облигации</dt><dd>{{ lot.nominal|money }} {{ lot.currency }}</dd>
-        <dt>Купон на одну облигацию</dt><dd>{{ lot.coupon_amount|money }} {{ lot.currency }}</dd>
+        <dt>Дата выпуска</dt><dd>{{ lot.issue_date or 'Не указана' }}</dd>
+        <dt>Номинальная ставка</dt><dd>{{ lot.nominal_rate or 'Не указана' }}{% if lot.nominal_rate %}%{% endif %}</dd>
+        <dt>Купонный период, дней</dt><dd>{{ lot.coupon_period if lot.coupon_period is not none else 'Не указан' }}</dd>
+        <dt>Вид облигации</dt><dd>{{ lot.bond_type or 'Не указан' }}</dd>
+        <dt>Количество купонов</dt><dd>{{ lot.schedule|selectattr('kind', 'equalto', 'coupon')|list|length }}</dd>
         <dt>Дата погашения</dt><dd>{{ lot.maturity_date }}</dd>
       </dl>
       <h2>Общий календарь выпуска</h2>
@@ -34,14 +38,16 @@
       <div class="table-scroll" role="region" aria-label="Календарь выплат" tabindex="0">
         <table>
           <caption>Расписание {{ lot.isin }}</caption>
-          <thead><tr><th scope="col">Дата</th><th scope="col">Выплата</th></tr></thead>
+          <thead><tr><th scope="col">Дата</th><th scope="col">Выплата</th>
+            <th scope="col">На одну облигацию</th></tr></thead>
           <tbody>
             {% for event in lot.schedule %}
             <tr data-event-id="{{ event.id }}">
               <td>{{ event.planned_date }}</td>
               <td>{% if event.kind == 'coupon' %}Купон{% else %}Погашение{% endif %}</td>
+              <td>{{ event.amount|money }} {{ lot.currency }}</td>
             </tr>
-            {% else %}<tr><td colspan="2">Расписание пока не заполнено.</td></tr>{% endfor %}
+            {% else %}<tr><td colspan="3">Расписание пока не заполнено.</td></tr>{% endfor %}
           </tbody>
         </table>
       </div>

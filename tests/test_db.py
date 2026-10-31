@@ -11,8 +11,10 @@ def add_history(database, issue_data, lot_data):
     bank = database.add_bank("Банк А")
     issue = database.add_issue(**issue_data)
     lot = database.add_lot(issue_id=issue["id"], bank_id=bank["id"], **lot_data)
-    event = database.add_scheduled_payment(issue_id=issue["id"], kind="coupon", planned_date="2024-08-15")
-    database.add_scheduled_payment(issue_id=issue["id"], kind="redemption", planned_date=issue["maturity_date"])
+    event = database.add_scheduled_payment(amount="80", issue_id=issue["id"], kind="coupon", planned_date="2024-08-15")
+    database.add_scheduled_payment(
+        amount="1000", issue_id=issue["id"], kind="redemption", planned_date=issue["maturity_date"]
+    )
 
     # Record actual amounts and a sale independently of the shared plan.
     database.add_actual_payment(
@@ -34,9 +36,9 @@ def assert_empty(database):
     assert all(records == [] for records in snapshot(database).values())
 
 
-def test_first_start_creates_empty_version_two_database(database, database_path):
+def test_first_start_creates_empty_version_three_database(database, database_path):
     assert database_path.is_file()
-    assert database.get_schema_version() == 2
+    assert database.get_schema_version() == 3
     assert_empty(database)
 
 
@@ -85,7 +87,7 @@ def test_empty_bank_name_is_rejected(database, name):
 
 
 @pytest.mark.parametrize("field, value", [
-    ("currency", "USD"), ("nominal", "500"), ("coupon_amount", "25"), ("maturity_date", "2028-01-20"),
+    ("currency", "USD"), ("nominal", "500"), ("nominal_rate", "25"), ("maturity_date", "2028-01-20"),
     ("isin", " UA4000000001 "),
 ])
 def test_isin_alone_is_unique_even_when_other_fields_differ(database, issue, issue_data, field, value):
@@ -113,7 +115,9 @@ def test_missing_parent_is_rejected_without_exposing_sqlite_errors(database, lot
     operations = {
         "lot-bank": lambda: database.add_lot(issue_id=lot["issue_id"], bank_id=999, **lot_data),
         "lot-issue": lambda: database.add_lot(issue_id=999, bank_id=lot["bank_id"], **lot_data),
-        "event": lambda: database.add_scheduled_payment(issue_id=999, kind="coupon", planned_date="2024-08-15"),
+        "event": lambda: database.add_scheduled_payment(
+            amount="80", issue_id=999, kind="coupon", planned_date="2024-08-15"
+        ),
         "actual-lot": lambda: database.add_actual_payment(
             lot_id=999, scheduled_payment_id=999, actual_date="2024-08-15", amount="800"
         ),
@@ -163,16 +167,16 @@ def test_delete_unreferenced_bank_and_missing_records(database):
 def test_payment_uniqueness_and_coupon_with_redemption_on_same_date(database, lot, duplicate):
     # Store a final coupon and redemption with one purchase confirmation.
     fields = {"issue_id": lot["issue_id"], "planned_date": lot["maturity_date"]}
-    coupon = database.add_scheduled_payment(**fields, kind="coupon")
-    redemption = database.add_scheduled_payment(**fields, kind="redemption")
+    coupon = database.add_scheduled_payment(amount="80", **fields, kind="coupon")
+    redemption = database.add_scheduled_payment(amount="1000", **fields, kind="redemption")
     actual_fields = {
         "lot_id": lot["id"], "scheduled_payment_id": coupon["id"],
         "actual_date": "2027-06-03", "amount": "795",
     }
     actual = database.add_actual_payment(**actual_fields)
     operations = {
-        "coupon": lambda: database.add_scheduled_payment(**fields, kind="coupon"),
-        "redemption": lambda: database.add_scheduled_payment(**fields, kind="redemption"),
+        "coupon": lambda: database.add_scheduled_payment(amount="80", **fields, kind="coupon"),
+        "redemption": lambda: database.add_scheduled_payment(amount="1000", **fields, kind="redemption"),
         "confirmation": lambda: database.add_actual_payment(**actual_fields),
     }
 
@@ -189,7 +193,9 @@ def test_payment_uniqueness_and_coupon_with_redemption_on_same_date(database, lo
 def test_event_constraints_reject_invalid_kind_or_maturity_conflict(database, issue, kind, day):
     # Reject unknown event kinds and dates conflicting with shared maturity.
     with pytest.raises(DataIntegrityError):
-        database.add_scheduled_payment(issue_id=issue["id"], kind=kind, planned_date=day)
+        database.add_scheduled_payment(
+            amount="1000" if kind == "redemption" else "80", issue_id=issue["id"], kind=kind, planned_date=day
+        )
 
     # Leave the calendar unchanged after a rejected event.
     assert database.list_scheduled_payments() == []
@@ -222,7 +228,9 @@ def test_two_purchases_share_calendar_and_keep_confirmations_independent(databas
 def test_confirmation_cannot_reference_another_issue(database, lot, issue_data):
     # Create a foreign issue event on a date valid for the purchase.
     foreign = database.add_issue(**{**issue_data, "isin": "UA4000000002"})
-    event = database.add_scheduled_payment(issue_id=foreign["id"], kind="coupon", planned_date="2024-08-15")
+    event = database.add_scheduled_payment(
+        amount="80", issue_id=foreign["id"], kind="coupon", planned_date="2024-08-15"
+    )
     saved = snapshot(database)
 
     # Reject the mismatched relationship and preserve every entity.
@@ -325,12 +333,14 @@ def test_closed_instance_cannot_be_used_or_reentered(database):
 
 def test_exact_monetary_values_survive_storage_restart(database, database_path, issue_data, lot_data):
     # Store cents exactly in every monetary entity with both decimal separators.
-    issue = database.add_issue(**{**issue_data, "nominal": "1000.00", "coupon_amount": "80,12"})
+    issue = database.add_issue(**{**issue_data, "nominal": "1000.00"})
     lot = database.add_lot(
         issue_id=issue["id"], bank_id=database.add_bank("Bank A")["id"],
         **{**lot_data, "purchase_price": "1000,01", "quantity": 3},
     )
-    event = database.add_scheduled_payment(issue_id=issue["id"], kind="coupon", planned_date="2024-08-15")
+    event = database.add_scheduled_payment(
+        amount="80,12", issue_id=issue["id"], kind="coupon", planned_date="2024-08-15"
+    )
     database.add_actual_payment(
         lot_id=lot["id"], scheduled_payment_id=event["id"], actual_date="2024-08-15", amount="795,01"
     )
@@ -342,13 +352,13 @@ def test_exact_monetary_values_survive_storage_restart(database, database_path, 
         stored = restarted.get_lot(lot["id"])
         assert stored["nominal"] == "1000.00"
         assert stored["purchase_price"] == "1000.01"
-        assert stored["coupon_amount"] == "80.12"
+        assert restarted.list_scheduled_payments()[0]["amount"] == "80.12"
         assert restarted.list_actual_payments(lot["id"])[0]["amount"] == "795.01"
         assert restarted.list_sales(lot["id"])[0]["sale_price"] == "1050.10"
         assert str(operation_amount(parse_money(stored["purchase_price"]), stored["quantity"])) == "3000.03"
 
 
-@pytest.mark.parametrize("field", ["nominal", "purchase_price", "coupon_amount", "sale_price", "amount"])
+@pytest.mark.parametrize("field", ["nominal", "purchase_price", "event_amount", "sale_price", "amount"])
 @pytest.mark.parametrize("value, message", [
     ("not-a-number", "finite decimal string"), ("NaN", "finite decimal string"),
     ("Infinity", "finite decimal string"), (1000.005, "finite decimal string"),
@@ -363,7 +373,11 @@ def test_invalid_monetary_input_is_rejected_before_storage(
 
     # Exercise the appropriate public API for each monetary field.
     with pytest.raises(ValueError, match=message):
-        if field in ("nominal", "coupon_amount"):
+        if field == "event_amount":
+            database.add_scheduled_payment(
+                issue_id=lot["issue_id"], kind="coupon", planned_date="2024-09-01", amount=value
+            )
+        elif field == "nominal":
             database.add_issue(**{**issue_data, "isin": "UA4000000002", field: value})
         elif field == "purchase_price":
             database.add_lot(issue_id=lot["issue_id"], bank_id=lot["bank_id"], **{**lot_data, field: value})

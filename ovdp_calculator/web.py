@@ -3,14 +3,25 @@
 from datetime import date
 from functools import wraps
 
-from flask import Blueprint, abort, current_app, redirect, render_template, request, url_for
+from flask import Blueprint, abort, current_app, jsonify, redirect, render_template, request, url_for
+from itsdangerous import BadSignature
 
 from .db import Database, DatabaseError
 from .money import operation_amount, parse_money
 from .portfolio import get_lot_details, list_lot_groups
-from .purchases import CURRENCIES, PurchaseValidationError, create_purchase
+from .nbu import NbuError, NbuNotFound
+from .purchases import (
+    CURRENCIES, IssueValidationError, PurchaseValidationError, create_purchase, issue_form_values, issue_signature,
+    validate_imported_issue,
+)
 
 purchase_pages = Blueprint("purchases", __name__)
+PREVIEW_FIELDS = (
+    ("nominal", "Номинал одной облигации"), ("currency", "Валюта"),
+    ("issue_date", "Дата выпуска / первичного размещения"), ("maturity_date", "Дата погашения"),
+    ("nominal_rate", "Номинальная ставка, %"), ("coupon_period", "Купонный период, дней"),
+    ("bond_type", "Вид облигации"),
+)
 
 
 def with_database(view):
@@ -41,7 +52,7 @@ def new_purchase(database: Database):
     today = date.today()
     values = {
         "purchase_date": today.isoformat(), "nominal": "1000", "currency": "UAH",
-        "coupon_amount": "0", "maturity_manual": "0",
+        "issue_mode": "pending", "entry_mode": "nbu",
     }
     errors = {}
     status = 200
@@ -50,6 +61,7 @@ def new_purchase(database: Database):
     if request.method == "POST":
         values = request.form.to_dict()
         try:
+            values = _prepare_purchase_values(values)
             create_purchase(database, values, today)
         except PurchaseValidationError as error:
             errors = error.errors
@@ -61,11 +73,93 @@ def new_purchase(database: Database):
         else:
             return redirect(url_for("index", saved="1"))
 
+    # Restore disabled saved fields for display after a rejected repeat purchase.
+    values.setdefault("entry_mode", "manual" if values.get("issue_mode") == "manual" else "nbu")
+    values.setdefault("nominal", "1000")
+    values.setdefault("currency", "UAH")
+    source_values = values if values.get("issue_mode") == "auto" else {}
+    issue = database.get_issue_by_isin(values.get("isin", ""))
+    if issue:
+        defaults = issue_form_values(issue, database.list_scheduled_payments(issue["id"]))
+        values = {**defaults, **values}
+        source_values = defaults
+
     # Render the same form with field errors and the original input strings.
     return render_template(
         "purchase_form.html", values=values, errors=errors, currencies=CURRENCIES,
-        today=today.isoformat(),
+        today=today.isoformat(), source_values=source_values, preview_fields=PREVIEW_FIELDS,
     ), status
+
+
+def _prepare_purchase_values(values: dict) -> dict:
+    # Restore read-only source values from a signed snapshot without another NBU request.
+    if values.get("issue_mode") == "auto":
+        try:
+            source = current_app.extensions["issue_signer"].loads(values.get("issue_token", ""))
+        except BadSignature as error:
+            values["issue_mode"] = "pending"
+            raise PurchaseValidationError({"isin": "Reload NBU data before saving this purchase."}) from error
+        if source["isin"] != values.get("isin", "").strip().upper():
+            values["issue_mode"] = "pending"
+            raise PurchaseValidationError({"isin": "Loaded data belongs to a different ISIN. Reload the issue."})
+        return {**values, **source}
+
+    # Limit the explicit manual form to nominal, currency and coupon dates with their own amounts.
+    if values.get("entry_mode") == "manual" and values.get("issue_mode") != "existing":
+        coupons = [row for row in values.get("coupon_schedule", "").splitlines() if row.strip()]
+        return {
+            **values, "issue_mode": "manual", "infer_maturity_from_coupons": "1" if coupons else "0",
+            "maturity_date": "" if coupons else values.get("maturity_date", ""),
+            "redemption_amount": values.get("nominal", ""), "issue_date": "", "nominal_rate": "",
+            "coupon_period": "", "bond_type": "",
+        }
+
+    # Keep existing issue resolution and domain-level legacy inputs unchanged.
+    return values
+
+
+@purchase_pages.get("/issues/lookup")
+@with_database
+def lookup_issue(database: Database):
+    """Return NBU draft data or protected saved issue data for the requested ISIN."""
+
+    # Resolve persisted data before requesting the public directory.
+    isin = request.args.get("isin", "").strip().upper()
+    issue = database.get_issue_by_isin(isin)
+    events = database.list_scheduled_payments(issue["id"]) if issue else []
+    warning = ""
+    local_only = request.args.get("source") == "local"
+    if local_only and issue is None:
+        return jsonify(existing=False)
+
+    # Keep known issues usable even when the remote directory is unavailable.
+    remote = None
+    try:
+        if not local_only:
+            remote = validate_imported_issue(current_app.extensions["nbu"].lookup(isin))
+    except (NbuError, IssueValidationError) as error:
+        message = str(error)
+        if isinstance(error, IssueValidationError):
+            message = f"Unsupported NBU bond data: {error.errors}"
+        if issue is None:
+            return jsonify(error=message), 404 if isinstance(error, NbuNotFound) else 502
+        remote = None
+        warning = f"{message} Saved issue data is being used."
+
+    # Return saved values without allowing NBU to rewrite an existing issue or any actual receipts.
+    if issue:
+        values = issue_form_values(issue, events)
+        if remote and issue_signature(remote["issue"], remote["payments"]) != issue_signature(issue, events):
+            warning = "NBU data differs from the saved issue. Shared corrections must be made separately."
+        lots = [lot for lot in database.list_lots() if lot["issue_id"] == issue["id"]]
+        details_url = url_for("purchases.purchase_details", lot_id=lots[0]["id"]) if lots else None
+        return jsonify(values=values, existing=True, warning=warning, details_url=details_url)
+
+    # Populate a new unsaved draft only after the complete NBU record passes validation.
+    values = issue_form_values(remote["issue"], remote["payments"])
+    return jsonify(
+        values=values, existing=False, warning="", issue_token=current_app.extensions["issue_signer"].dumps(values)
+    )
 
 
 @purchase_pages.get("/history")

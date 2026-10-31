@@ -7,7 +7,7 @@ import sqlite3
 from ovdp_calculator.money import parse_money
 
 DEFAULT_DATABASE = Path(__file__).resolve().parent.parent / "instance" / "portfolio.sqlite3"
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 
 # Execute individual SQL statements to create the schema in one transaction.
 # In Python 3.11, executescript() commits any pending transaction first.
@@ -25,8 +25,11 @@ _SCHEMA_STATEMENTS = (
         isin TEXT NOT NULL UNIQUE CHECK (length(trim(isin)) > 0),
         nominal TEXT NOT NULL,
         currency TEXT NOT NULL CHECK (currency IN ('UAH', 'USD', 'EUR')),
-        coupon_amount TEXT NOT NULL,
-        maturity_date TEXT NOT NULL
+        maturity_date TEXT NOT NULL,
+        issue_date TEXT NOT NULL DEFAULT '',
+        nominal_rate TEXT NOT NULL DEFAULT '',
+        coupon_period INTEGER,
+        bond_type TEXT NOT NULL DEFAULT ''
     )
     """,
     """
@@ -47,6 +50,7 @@ _SCHEMA_STATEMENTS = (
         issue_id INTEGER NOT NULL REFERENCES bond_issues(id) ON DELETE RESTRICT,
         kind TEXT NOT NULL CHECK (kind IN ('coupon', 'redemption')),
         planned_date TEXT NOT NULL,
+        amount TEXT NOT NULL,
         UNIQUE (issue_id, kind, planned_date),
         UNIQUE (id, issue_id)
     )
@@ -100,7 +104,8 @@ _SCHEMA_STATEMENTS += tuple(
 )
 
 _LOT_SELECT = """
-    SELECT l.*, i.isin, i.nominal, i.currency, i.coupon_amount, i.maturity_date
+    SELECT l.*, i.isin, i.nominal, i.currency, i.maturity_date,
+           i.issue_date, i.nominal_rate, i.coupon_period, i.bond_type
     FROM bond_lots l JOIN bond_issues i ON i.id = l.issue_id
 """
 
@@ -304,11 +309,15 @@ class Database:
             return self._execute("DELETE FROM banks WHERE id = ?", (bank_id,)).rowcount > 0
 
 
-    def add_issue(self, *, isin: str, nominal: str, currency: str, coupon_amount: str, maturity_date: str) -> dict:
-        """Create a unique ISIN with shared currency, exact unit amounts and ISO maturity; return its dictionary."""
+    def add_issue(
+        self, *, isin: str, nominal: str, currency: str, maturity_date: str, issue_date: str = "",
+        nominal_rate: str = "", coupon_period: int | None = None, bond_type: str = "",
+    ) -> dict:
+        """Create an issue with exact nominal, ISO dates and optional source metadata; return its dictionary."""
         return self._insert_record("bond_issues", {
-            "isin": isin.strip(), "nominal": str(parse_money(nominal)), "currency": currency,
-            "coupon_amount": str(parse_money(coupon_amount)), "maturity_date": maturity_date,
+            "isin": isin.strip().upper(), "nominal": str(parse_money(nominal)), "currency": currency,
+            "maturity_date": maturity_date, "issue_date": issue_date, "nominal_rate": nominal_rate,
+            "coupon_period": coupon_period, "bond_type": bond_type,
         })
 
 
@@ -319,7 +328,7 @@ class Database:
 
     def get_issue_by_isin(self, isin: str) -> dict | None:
         """Find a shared issue by trimmed ISIN and return its dictionary, or None if absent."""
-        return self._fetch_one("SELECT * FROM bond_issues WHERE isin = ?", (isin.strip(),))
+        return self._fetch_one("SELECT * FROM bond_issues WHERE isin = ?", (isin.strip().upper(),))
 
 
     def list_issues(self) -> list[dict]:
@@ -353,10 +362,17 @@ class Database:
             return self._execute("DELETE FROM bond_lots WHERE id = ?", (lot_id,)).rowcount > 0
 
 
-    def add_scheduled_payment(self, *, issue_id: int, kind: str, planned_date: str) -> dict:
-        """Schedule an issue's coupon or redemption on an ISO date; return its shared event dictionary."""
+    def add_scheduled_payment(self, *, issue_id: int, kind: str, planned_date: str, amount: str) -> dict:
+        """Schedule an ISO-dated event with its exact amount per bond; return the shared event dictionary."""
+
+        # Validate the event's own amount before opening a write scope.
+        parsed = parse_money(amount)
+        if parsed < 0 or (kind == "redemption" and parsed == 0):
+            raise ValueError("Event amount must be nonnegative and redemption must be positive.")
+
+        # Keep unit amounts on calendar events rather than on the shared issue.
         return self._insert_record("scheduled_payments", {
-            "issue_id": issue_id, "kind": kind, "planned_date": planned_date,
+            "issue_id": issue_id, "kind": kind, "planned_date": planned_date, "amount": str(parsed),
         })
 
 

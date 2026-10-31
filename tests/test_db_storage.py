@@ -43,7 +43,7 @@ def test_close_rolls_back_a_write_left_without_commit(database, database_path):
         assert reopened.list_banks() == []
 
 
-@pytest.mark.parametrize("version", [-1, 1, 99])
+@pytest.mark.parametrize("version", [-1, 1, 2, 99])
 def test_unknown_versions_leave_database_byte_for_byte_unchanged(database, database_path, version):
     # Prepare a populated file carrying an unsupported schema version.
     database.add_bank("Банк А")
@@ -108,7 +108,9 @@ def test_application_rejects_legacy_schema_without_relabeling_or_deleting_it(dat
 def test_composite_foreign_keys_reject_cross_issue_confirmations(database, lot, issue_data, bridge):
     # Prepare a foreign event and choose either side's issue for a forged confirmation.
     foreign = database.add_issue(**{**issue_data, "isin": "UA4000000002"})
-    event = database.add_scheduled_payment(issue_id=foreign["id"], kind="coupon", planned_date="2024-08-15")
+    event = database.add_scheduled_payment(
+        amount="80", issue_id=foreign["id"], kind="coupon", planned_date="2024-08-15"
+    )
     issue_id = lot["issue_id"] if bridge == "lot" else foreign["id"]
 
     # Bypass the public writer to prove that SQLite itself enforces both relationships.
@@ -124,7 +126,9 @@ def test_composite_foreign_keys_reject_cross_issue_confirmations(database, lot, 
 
 def test_one_redemption_per_issue_even_for_different_dates(database, issue):
     # Store a valid redemption and temporarily move maturity before a second insertion.
-    event = database.add_scheduled_payment(issue_id=issue["id"], kind="redemption", planned_date=issue["maturity_date"])
+    event = database.add_scheduled_payment(
+        amount="1000", issue_id=issue["id"], kind="redemption", planned_date=issue["maturity_date"]
+    )
     connection = database._get_connection()
 
     # Exercise the partial unique index independently of the duplicate-date constraint.
@@ -132,7 +136,8 @@ def test_one_redemption_per_issue_even_for_different_dates(database, issue):
         with connection:
             connection.execute("UPDATE bond_issues SET maturity_date = '2028-01-01' WHERE id = ?", (issue["id"],))
             connection.execute(
-                "INSERT INTO scheduled_payments (issue_id, kind, planned_date) VALUES (?, 'redemption', '2028-01-01')",
+                "INSERT INTO scheduled_payments (issue_id, kind, planned_date, amount) "
+                "VALUES (?, 'redemption', '2028-01-01', '1000')",
                 (issue["id"],),
             )
     assert database.get_issue(issue["id"]) == issue
@@ -152,3 +157,14 @@ def test_shared_event_with_confirmation_cannot_be_deleted(database, lot, payment
             connection.execute("DELETE FROM scheduled_payments WHERE id = ?", (payment["id"],))
     assert database.list_scheduled_payments() == [payment]
     assert database.list_actual_payments() == [actual]
+
+
+def test_schema_has_event_amounts_without_a_shared_coupon_column(database):
+    # Inspect only the storage internals needed to enforce the schema contract.
+    connection = database._get_connection()
+    issue_columns = {row[1] for row in connection.execute("PRAGMA table_info(bond_issues)")}
+    event_columns = {row[1] for row in connection.execute("PRAGMA table_info(scheduled_payments)")}
+    assert "coupon_amount" not in issue_columns
+    assert {"issue_date", "nominal_rate", "coupon_period", "bond_type"} <= issue_columns
+    assert "amount" in event_columns
+    assert database.get_schema_version() == 3

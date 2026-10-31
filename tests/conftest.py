@@ -33,7 +33,6 @@ def issue_data():
         "isin": "UA4000000001",
         "nominal": "1000",
         "currency": "UAH",
-        "coupon_amount": "80",
         "maturity_date": "2027-06-01",
     }
 
@@ -60,4 +59,4 @@ def lot(database, issue, bank, lot_data):
 
 @pytest.fixture
 def payment(database, issue):
-    return database.add_scheduled_payment(issue_id=issue["id"], kind="coupon", planned_date="2024-08-15")
+    return database.add_scheduled_payment(amount="80", issue_id=issue["id"], kind="coupon", planned_date="2024-08-15")

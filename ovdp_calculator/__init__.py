@@ -1,9 +1,13 @@
 """Local application for tracking Ukrainian government bonds."""
 
+from secrets import token_hex
+
 from flask import Flask, render_template, request
+from itsdangerous import URLSafeSerializer
 
 from .db import Database
 from .portfolio import list_lot_groups
+from .nbu import NbuClient
 from .web import purchase_pages, with_database
 
 
@@ -15,6 +19,8 @@ def create_app(config: dict | None = None) -> Flask:
     app.config.from_mapping(DEBUG=False)
     if config is not None:
         app.config.update(config)
+    app.extensions["nbu"] = NbuClient()
+    app.extensions["issue_signer"] = URLSafeSerializer(app.config.get("SECRET_KEY") or token_hex(32), salt="nbu-issue")
 
     # Initialize or verify storage before accepting requests.
     with Database(app.config.get("DATABASE")):
