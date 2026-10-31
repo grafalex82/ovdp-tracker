@@ -7,7 +7,7 @@ import sqlite3
 from ovdp_calculator.money import parse_money
 
 DEFAULT_DATABASE = Path(__file__).resolve().parent.parent / "instance" / "portfolio.sqlite3"
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 # Execute individual SQL statements to create the schema in one transaction.
 # In Python 3.11, executescript() commits any pending transaction first.
@@ -20,40 +20,52 @@ _SCHEMA_STATEMENTS = (
     )
     """,
     """
-    CREATE TABLE bond_lots (
+    CREATE TABLE bond_issues (
         id INTEGER PRIMARY KEY,
-        isin TEXT NOT NULL,
-        purchase_date TEXT NOT NULL,
+        isin TEXT NOT NULL UNIQUE CHECK (length(trim(isin)) > 0),
         nominal TEXT NOT NULL,
         currency TEXT NOT NULL CHECK (currency IN ('UAH', 'USD', 'EUR')),
-        purchase_price TEXT NOT NULL,
-        quantity INTEGER NOT NULL
-            CHECK (typeof(quantity) = 'integer' AND quantity > 0),
-        bank_id INTEGER NOT NULL REFERENCES banks(id) ON DELETE RESTRICT,
         coupon_amount TEXT NOT NULL,
         maturity_date TEXT NOT NULL
     )
     """,
     """
-    CREATE TABLE scheduled_payments (
+    CREATE TABLE bond_lots (
         id INTEGER PRIMARY KEY,
-        lot_id INTEGER NOT NULL REFERENCES bond_lots(id) ON DELETE CASCADE,
-        kind TEXT NOT NULL CHECK (kind IN ('coupon', 'redemption')),
-        planned_date TEXT NOT NULL,
-        UNIQUE (lot_id, kind, planned_date)
+        issue_id INTEGER NOT NULL REFERENCES bond_issues(id) ON DELETE RESTRICT,
+        purchase_date TEXT NOT NULL,
+        purchase_price TEXT NOT NULL,
+        quantity INTEGER NOT NULL
+            CHECK (typeof(quantity) = 'integer' AND quantity > 0),
+        bank_id INTEGER NOT NULL REFERENCES banks(id) ON DELETE RESTRICT,
+        UNIQUE (id, issue_id)
     )
     """,
     """
-    CREATE UNIQUE INDEX one_redemption_per_lot
-        ON scheduled_payments(lot_id) WHERE kind = 'redemption'
+    CREATE TABLE scheduled_payments (
+        id INTEGER PRIMARY KEY,
+        issue_id INTEGER NOT NULL REFERENCES bond_issues(id) ON DELETE RESTRICT,
+        kind TEXT NOT NULL CHECK (kind IN ('coupon', 'redemption')),
+        planned_date TEXT NOT NULL,
+        UNIQUE (issue_id, kind, planned_date),
+        UNIQUE (id, issue_id)
+    )
+    """,
+    """
+    CREATE UNIQUE INDEX one_redemption_per_issue
+        ON scheduled_payments(issue_id) WHERE kind = 'redemption'
     """,
     """
     CREATE TABLE actual_payments (
         id INTEGER PRIMARY KEY,
-        scheduled_payment_id INTEGER NOT NULL UNIQUE
-            REFERENCES scheduled_payments(id) ON DELETE CASCADE,
+        lot_id INTEGER NOT NULL,
+        issue_id INTEGER NOT NULL,
+        scheduled_payment_id INTEGER NOT NULL,
         actual_date TEXT NOT NULL,
-        amount TEXT NOT NULL
+        amount TEXT NOT NULL,
+        UNIQUE (lot_id, scheduled_payment_id),
+        FOREIGN KEY (lot_id, issue_id) REFERENCES bond_lots(id, issue_id) ON DELETE CASCADE,
+        FOREIGN KEY (scheduled_payment_id, issue_id) REFERENCES scheduled_payments(id, issue_id) ON DELETE RESTRICT
     )
     """,
     """
@@ -67,6 +79,30 @@ _SCHEMA_STATEMENTS = (
     )
     """,
 )
+
+# Check shared maturity boundaries when inserting or updating calendar events.
+_CALENDAR_CONFLICT = """
+    SELECT 1 FROM bond_issues
+    WHERE id = NEW.issue_id AND (
+        (NEW.kind = 'redemption' AND NEW.planned_date != maturity_date)
+        OR (NEW.kind = 'coupon' AND NEW.planned_date > maturity_date)
+    )
+"""
+_SCHEMA_STATEMENTS += tuple(
+    f"""
+    CREATE TRIGGER validate_event_{operation.lower()} BEFORE {operation} ON scheduled_payments
+    WHEN EXISTS ({_CALENDAR_CONFLICT})
+    BEGIN
+        SELECT RAISE(ABORT, 'Event date conflicts with issue maturity.');
+    END
+    """
+    for operation in ("INSERT", "UPDATE")
+)
+
+_LOT_SELECT = """
+    SELECT l.*, i.isin, i.nominal, i.currency, i.coupon_amount, i.maturity_date
+    FROM bond_lots l JOIN bond_issues i ON i.id = l.issue_id
+"""
 
 
 class DatabaseError(RuntimeError):
@@ -215,7 +251,8 @@ class Database:
             if version != 0:
                 raise SchemaVersionError(
                     f"Unsupported SQLite schema version: {version} "
-                    f"(supported version: {SCHEMA_VERSION}). The database has not been changed."
+                    f"(supported version: {SCHEMA_VERSION}). The database has not been changed. "
+                    "To discard development data, stop the application and delete the database file before restarting."
                 )
 
             # Refuse to adopt an existing schema that has no version marker.
@@ -267,80 +304,88 @@ class Database:
             return self._execute("DELETE FROM banks WHERE id = ?", (bank_id,)).rowcount > 0
 
 
-    def add_lot(
-        self,
-        *, isin: str, purchase_date: str, nominal: str, currency: str,
-        purchase_price: str, quantity: int, bank_id: int, coupon_amount: str,
-        maturity_date: str,
-    ) -> dict:
-        """Store purchase details and return the new lot dictionary, including its ID.
-
-        Args:
-            isin: The bond issue identifier.
-            purchase_date: The purchase date as an ISO date string.
-            nominal: The exact nominal value per bond as a decimal string, with a dot or comma separator.
-            currency: The currency code: UAH, USD, or EUR.
-            purchase_price: The exact purchase price per bond as a decimal string.
-            quantity: The positive integer number of purchased bonds.
-            bank_id: The identifier of the bank used for this purchase.
-            coupon_amount: The coupon amount per bond as a decimal string.
-            maturity_date: The maturity date as an ISO date string.
-
-        Returns:
-            A dictionary containing the supplied purchase fields and the generated ID.
-        """
-        return self._insert_record("bond_lots", {
-            "isin": isin,
-            "purchase_date": purchase_date,
-            "nominal": str(parse_money(nominal)),
-            "currency": currency,
-            "purchase_price": str(parse_money(purchase_price)),
-            "quantity": quantity,
-            "bank_id": bank_id,
-            "coupon_amount": str(parse_money(coupon_amount)),
-            "maturity_date": maturity_date,
+    def add_issue(self, *, isin: str, nominal: str, currency: str, coupon_amount: str, maturity_date: str) -> dict:
+        """Create a unique ISIN with shared currency, exact unit amounts and ISO maturity; return its dictionary."""
+        return self._insert_record("bond_issues", {
+            "isin": isin.strip(), "nominal": str(parse_money(nominal)), "currency": currency,
+            "coupon_amount": str(parse_money(coupon_amount)), "maturity_date": maturity_date,
         })
+
+
+    def get_issue(self, issue_id: int) -> dict | None:
+        """Find a shared issue by ID and return its dictionary, or None if absent."""
+        return self._fetch_one("SELECT * FROM bond_issues WHERE id = ?", (issue_id,))
+
+
+    def get_issue_by_isin(self, isin: str) -> dict | None:
+        """Find a shared issue by trimmed ISIN and return its dictionary, or None if absent."""
+        return self._fetch_one("SELECT * FROM bond_issues WHERE isin = ?", (isin.strip(),))
+
+
+    def list_issues(self) -> list[dict]:
+        """List shared issue dictionaries ordered by ID, including issues without purchases."""
+        return self._fetch_all("SELECT * FROM bond_issues ORDER BY id")
+
+
+    def add_lot(self, *, issue_id: int, purchase_date: str, purchase_price: str, quantity: int, bank_id: int) -> dict:
+        """Store issue ID, ISO purchase date, exact unit price, quantity and bank; return the lot with issue fields."""
+        with self._write_scope():
+            lot = self._insert_record("bond_lots", {
+                "issue_id": issue_id, "purchase_date": purchase_date,
+                "purchase_price": str(parse_money(purchase_price)), "quantity": quantity, "bank_id": bank_id,
+            })
+            return self.get_lot(lot["id"])
 
 
     def get_lot(self, lot_id: int) -> dict | None:
         """Find a purchase by lot ID and return its dictionary, or None if no lot exists."""
-        return self._fetch_one("SELECT * FROM bond_lots WHERE id = ?", (lot_id,))
+        return self._fetch_one(_LOT_SELECT + " WHERE l.id = ?", (lot_id,))
 
 
     def list_lots(self) -> list[dict]:
         """List all purchases as dictionaries ordered by lot ID."""
-        return self._fetch_all("SELECT * FROM bond_lots ORDER BY id")
+        return self._fetch_all(_LOT_SELECT + " ORDER BY l.id")
 
 
     def delete_lot(self, lot_id: int) -> bool:
-        """Delete a lot and its history by ID, preserving the bank; return True if removed or False if absent."""
+        """Delete a lot's own history by ID, preserving its issue, calendar and bank; return whether it was removed."""
         with self._write_scope():
             return self._execute("DELETE FROM bond_lots WHERE id = ?", (lot_id,)).rowcount > 0
 
 
-    def add_scheduled_payment(self, *, lot_id: int, kind: str, planned_date: str) -> dict:
-        """Schedule a coupon or redemption for a lot and ISO date; return the stored event dictionary."""
-        return self._insert_record("scheduled_payments", {"lot_id": lot_id, "kind": kind, "planned_date": planned_date})
+    def add_scheduled_payment(self, *, issue_id: int, kind: str, planned_date: str) -> dict:
+        """Schedule an issue's coupon or redemption on an ISO date; return its shared event dictionary."""
+        return self._insert_record("scheduled_payments", {
+            "issue_id": issue_id, "kind": kind, "planned_date": planned_date,
+        })
 
 
-    def list_scheduled_payments(self, lot_id: int | None = None) -> list[dict]:
-        """List planned event dictionaries by ID; filter by lot_id when supplied, or include all lots for None."""
+    def list_scheduled_payments(self, issue_id: int | None = None) -> list[dict]:
+        """List shared event dictionaries by ID, optionally restricted to issue_id; None selects all issues."""
 
-        # Read the complete schedule when no lot filter is supplied.
-        if lot_id is None:
+        # Read the complete schedule when no issue filter is supplied.
+        if issue_id is None:
             return self._fetch_all("SELECT * FROM scheduled_payments ORDER BY id")
 
-        # Restrict the schedule to the requested lot.
-        return self._fetch_all("SELECT * FROM scheduled_payments WHERE lot_id = ? ORDER BY id", (lot_id,))
+        # Restrict the schedule to the requested shared issue.
+        return self._fetch_all("SELECT * FROM scheduled_payments WHERE issue_id = ? ORDER BY id", (issue_id,))
 
 
-    def add_actual_payment(self, *, scheduled_payment_id: int, actual_date: str, amount: str) -> dict:
-        """Record an event's actual date and exact decimal amount string; return the confirmation dictionary."""
-        return self._insert_record("actual_payments", {
-            "scheduled_payment_id": scheduled_payment_id,
-            "actual_date": actual_date,
-            "amount": str(parse_money(amount)),
-        })
+    def add_actual_payment(self, *, lot_id: int, scheduled_payment_id: int, actual_date: str, amount: str) -> dict:
+        """Confirm a lot/event pair with its ISO actual date and exact total amount; return the stored dictionary."""
+
+        # Parse money before writing and resolve the purchase's shared issue.
+        amount = str(parse_money(amount))
+        with self._write_scope():
+            lot = self.get_lot(lot_id)
+            if lot is None:
+                raise DataIntegrityError("The purchase does not exist.")
+
+            # Composite foreign keys reject events belonging to another issue.
+            return self._insert_record("actual_payments", {
+                "lot_id": lot_id, "issue_id": lot["issue_id"], "scheduled_payment_id": scheduled_payment_id,
+                "actual_date": actual_date, "amount": amount,
+            })
 
 
     def list_actual_payments(self, lot_id: int | None = None) -> list[dict]:
@@ -350,12 +395,8 @@ class Database:
         if lot_id is None:
             return self._fetch_all("SELECT * FROM actual_payments ORDER BY id")
 
-        # Resolve each confirmation's lot through its planned event.
-        return self._fetch_all(
-            """SELECT a.* FROM actual_payments a
-               JOIN scheduled_payments p ON p.id = a.scheduled_payment_id
-               WHERE p.lot_id = ? ORDER BY a.id""", (lot_id,)
-        )
+        # Restrict confirmations to the requested purchase without duplicating its shared calendar.
+        return self._fetch_all("SELECT * FROM actual_payments WHERE lot_id = ? ORDER BY id", (lot_id,))
 
 
     def add_sale(self, *, lot_id: int, sale_date: str, sale_price: str, quantity: int) -> dict:

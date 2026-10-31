@@ -94,8 +94,8 @@ def validate_purchase(values: dict, today: date) -> dict:
         errors["maturity_date"] = "Maturity date cannot be before the purchase date."
     if len(coupons) != len(set(coupons)):
         errors["coupon_dates"] = "Coupon dates must be unique."
-    if any((purchase_date and day < purchase_date) or (maturity_date and day > maturity_date) for day in coupons):
-        errors["coupon_dates"] = "Coupon dates must be between purchase and maturity, inclusive."
+    if any(maturity_date and day > maturity_date for day in coupons):
+        errors["coupon_dates"] = "Coupon dates must not be after maturity."
     if errors:
         raise PurchaseValidationError(errors)
 
@@ -113,11 +113,41 @@ def create_purchase(database: Database, values: dict, today: date | None = None)
     bank_name = purchase.pop("bank_name")
     coupon_dates = purchase.pop("coupon_dates")
 
-    # Commit the bank, purchase, and separate coupon/redemption events as one unit.
+    # Resolve or create the shared issue and calendar in the same transaction as the purchase.
     with database.transaction():
+        issue_fields = ("isin", "nominal", "currency", "coupon_amount", "maturity_date")
+        issue_values = {field: purchase.pop(field) for field in issue_fields}
+        issue = database.get_issue_by_isin(issue_values["isin"])
+        if issue is None:
+            issue = database.add_issue(**issue_values)
+            for planned_date in coupon_dates:
+                database.add_scheduled_payment(issue_id=issue["id"], kind="coupon", planned_date=planned_date)
+            database.add_scheduled_payment(
+                issue_id=issue["id"], kind="redemption", planned_date=issue["maturity_date"]
+            )
+        else:
+            _validate_shared_issue(database, issue, issue_values, coupon_dates)
+
+        # Store only independent purchase fields and reuse the issue without copying its events.
         bank = database.add_bank(bank_name)
-        lot = database.add_lot(**purchase, bank_id=bank["id"])
-        for planned_date in coupon_dates:
-            database.add_scheduled_payment(lot_id=lot["id"], kind="coupon", planned_date=planned_date)
-        database.add_scheduled_payment(lot_id=lot["id"], kind="redemption", planned_date=lot["maturity_date"])
+        lot = database.add_lot(**purchase, issue_id=issue["id"], bank_id=bank["id"])
     return lot
+
+
+def _validate_shared_issue(database: Database, issue: dict, values: dict, coupon_dates: list[str]) -> None:
+    # Compare exact monetary values regardless of their decimal separator or trailing zeros.
+    errors = {}
+    for field, value in values.items():
+        existing = issue[field]
+        if field in ("nominal", "coupon_amount"):
+            existing, value = parse_money(existing), parse_money(value)
+        if existing != value:
+            errors[field] = "This field conflicts with the existing ISIN."
+
+    # Reject partial or altered calendars rather than overwriting the issue on a repeat purchase.
+    events = database.list_scheduled_payments(issue["id"])
+    existing_dates = sorted(event["planned_date"] for event in events if event["kind"] == "coupon")
+    if existing_dates != coupon_dates:
+        errors["coupon_dates"] = "Coupon dates conflict with the existing ISIN."
+    if errors:
+        raise PurchaseValidationError(errors)

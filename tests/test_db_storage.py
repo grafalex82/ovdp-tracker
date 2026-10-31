@@ -10,6 +10,7 @@ import sqlite3
 import pytest
 
 from ovdp_calculator import db
+from ovdp_calculator import create_app
 from ovdp_calculator.db import Database
 
 
@@ -42,7 +43,7 @@ def test_close_rolls_back_a_write_left_without_commit(database, database_path):
         assert reopened.list_banks() == []
 
 
-@pytest.mark.parametrize("version", [-1, 99])
+@pytest.mark.parametrize("version", [-1, 1, 99])
 def test_unknown_versions_leave_database_byte_for_byte_unchanged(database, database_path, version):
     # Prepare a populated file carrying an unsupported schema version.
     database.add_bank("Банк А")
@@ -85,3 +86,69 @@ def test_failed_schema_creation_leaves_no_partial_tables_or_version(tmp_path, mo
     with closing(sqlite3.connect(path)) as connection:
         assert connection.execute("PRAGMA user_version").fetchone()[0] == 0
         assert connection.execute("SELECT name FROM sqlite_master").fetchall() == []
+
+
+def test_application_rejects_legacy_schema_without_relabeling_or_deleting_it(database_path):
+    # Build a legacy file with a purchase carrying its own issue fields.
+    database_path.parent.mkdir(parents=True)
+    with closing(sqlite3.connect(database_path)) as connection:
+        with connection:
+            connection.execute("CREATE TABLE bond_lots (id INTEGER PRIMARY KEY, isin TEXT, currency TEXT)")
+            connection.execute("INSERT INTO bond_lots VALUES (1, 'UA4000000001', 'USD')")
+            connection.execute("PRAGMA user_version = 1")
+    original = database_path.read_bytes()
+
+    # Fail during startup while retaining both the old version and all file contents.
+    with pytest.raises(db.SchemaVersionError, match="stop the application and delete the database file"):
+        create_app({"TESTING": True, "DATABASE": str(database_path)})
+    assert database_path.read_bytes() == original
+
+
+@pytest.mark.parametrize("bridge", ["lot", "event"])
+def test_composite_foreign_keys_reject_cross_issue_confirmations(database, lot, issue_data, bridge):
+    # Prepare a foreign event and choose either side's issue for a forged confirmation.
+    foreign = database.add_issue(**{**issue_data, "isin": "UA4000000002"})
+    event = database.add_scheduled_payment(issue_id=foreign["id"], kind="coupon", planned_date="2024-08-15")
+    issue_id = lot["issue_id"] if bridge == "lot" else foreign["id"]
+
+    # Bypass the public writer to prove that SQLite itself enforces both relationships.
+    connection = database._get_connection()
+    with pytest.raises(sqlite3.IntegrityError, match="FOREIGN KEY"):
+        with connection:
+            connection.execute(
+                """INSERT INTO actual_payments (lot_id, issue_id, scheduled_payment_id, actual_date, amount)
+                   VALUES (?, ?, ?, '2024-08-16', '795')""", (lot["id"], issue_id, event["id"])
+            )
+    assert database.list_actual_payments() == []
+
+
+def test_one_redemption_per_issue_even_for_different_dates(database, issue):
+    # Store a valid redemption and temporarily move maturity before a second insertion.
+    event = database.add_scheduled_payment(issue_id=issue["id"], kind="redemption", planned_date=issue["maturity_date"])
+    connection = database._get_connection()
+
+    # Exercise the partial unique index independently of the duplicate-date constraint.
+    with pytest.raises(sqlite3.IntegrityError, match="UNIQUE"):
+        with connection:
+            connection.execute("UPDATE bond_issues SET maturity_date = '2028-01-01' WHERE id = ?", (issue["id"],))
+            connection.execute(
+                "INSERT INTO scheduled_payments (issue_id, kind, planned_date) VALUES (?, 'redemption', '2028-01-01')",
+                (issue["id"],),
+            )
+    assert database.get_issue(issue["id"]) == issue
+    assert database.list_scheduled_payments() == [event]
+
+
+def test_shared_event_with_confirmation_cannot_be_deleted(database, lot, payment):
+    # Attach a purchase-specific fact to its shared event.
+    actual = database.add_actual_payment(
+        lot_id=lot["id"], scheduled_payment_id=payment["id"], actual_date="2024-08-16", amount="795"
+    )
+
+    # Reject raw deletion rather than cascading away the purchase's fact.
+    connection = database._get_connection()
+    with pytest.raises(sqlite3.IntegrityError, match="FOREIGN KEY"):
+        with connection:
+            connection.execute("DELETE FROM scheduled_payments WHERE id = ?", (payment["id"],))
+    assert database.list_scheduled_payments() == [payment]
+    assert database.list_actual_payments() == [actual]

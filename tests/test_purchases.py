@@ -73,14 +73,14 @@ def test_coupon_purchase_saves_all_fields_and_separate_events(app, database, pur
     bank, = database.list_banks()
     assert bank["name"] == "Банк А"
     assert lot == {
-        "id": lot["id"], "isin": "UA4000000001", "purchase_date": "2024-02-15",
+        "id": lot["id"], "issue_id": lot["issue_id"], "isin": "UA4000000001", "purchase_date": "2024-02-15",
         "nominal": "1000", "currency": "UAH", "purchase_price": "1024", "quantity": 10,
         "bank_id": bank["id"], "coupon_amount": "80", "maturity_date": "2027-06-01",
     }
     assert operation_amount(parse_money(lot["purchase_price"]), lot["quantity"]) == parse_money("10240.00")
 
     # Keep the historical coupon, final coupon, and redemption as distinct unconfirmed events.
-    events = database.list_scheduled_payments(lot["id"])
+    events = database.list_scheduled_payments(lot["issue_id"])
     assert [(event["kind"], event["planned_date"]) for event in events] == [
         ("coupon", "2024-08-15"), ("coupon", "2027-06-01"), ("redemption", "2027-06-01"),
     ]
@@ -123,7 +123,7 @@ def test_zero_coupon_purchase_saves_only_redemption_and_survives_restart(app, ap
         lot, = reopened.list_lots()
         event, = reopened.list_scheduled_payments()
         assert event["kind"] == "redemption"
-        assert event["lot_id"] == lot["id"]
+        assert event["issue_id"] == lot["issue_id"]
         assert event["planned_date"] == lot["maturity_date"] == "2025-02-15"
         assert operation_amount(parse_money(lot["purchase_price"]), lot["quantity"]) == parse_money("9000.00")
         assert operation_amount(parse_money(lot["nominal"]), lot["quantity"]) == parse_money("10000.00")
@@ -165,8 +165,7 @@ def test_purchase_and_coupon_dates_allow_inclusive_boundaries(app, database, pur
     ("maturity_date", "2023-01-01", "Maturity date cannot be before the purchase date."),
     ("maturity_date", "2027-02-30", "Enter a valid date"),
     ("coupon_dates", "2027-06-01\n2027-06-01", "Coupon dates must be unique."),
-    ("coupon_dates", "2024-02-14", "Coupon dates must be between purchase and maturity"),
-    ("coupon_dates", "2027-06-02", "Coupon dates must be between purchase and maturity"),
+    ("coupon_dates", "2027-06-02", "Coupon dates must not be after maturity"),
     ("coupon_dates", "2024-02-30", "Enter a valid date"),
     ("coupon_dates", "20240601", "Enter a valid date"),
 ])
@@ -192,6 +191,7 @@ def test_invalid_purchase_keeps_inputs_and_creates_no_records(app, database, pur
     assert database.list_lots() == []
     assert database.list_banks() == []
     assert database.list_scheduled_payments() == []
+    assert database.list_issues() == []
 
 
 @pytest.mark.parametrize("field", ["nominal", "purchase_price", "coupon_amount"])
@@ -241,6 +241,7 @@ def test_failed_schedule_write_rolls_back_whole_purchase(app, database, purchase
     assert database.list_lots() == []
     assert database.list_banks() == []
     assert database.list_scheduled_payments() == []
+    assert database.list_issues() == []
 
 
 def test_purchase_error_escapes_user_content(app, purchase_form):
@@ -249,3 +250,69 @@ def test_purchase_error_escapes_user_content(app, purchase_form):
         html = client.post("/purchases/new", data=purchase_form).get_data(as_text=True)
         assert '<script>alert("x")</script>' not in html
         assert "&lt;script&gt;" in html
+
+
+def test_repeat_purchase_reuses_issue_and_complete_calendar(app, database, purchase_form):
+    # Save the first purchase and remember its common issue and calendar.
+    with app.test_client() as client:
+        assert client.post("/purchases/new", data=purchase_form).status_code == 302
+        first, = database.list_lots()
+        issues = database.list_issues()
+        events = database.list_scheduled_payments()
+
+        # Buy the same ISIN later at an independent price through another bank.
+        purchase_form.update({
+            "purchase_date": "2025-01-01", "purchase_price": "1000,01", "quantity": "3", "bank_name": "Банк Б",
+            "nominal": "1000,00", "coupon_amount": "80.00", "coupon_dates": "2024-08-15\n2027-06-01",
+        })
+        assert client.post("/purchases/new", data=purchase_form).status_code == 302
+
+    # Preserve the first purchase and all calendar dates, including those before the second purchase.
+    assert database.list_issues() == issues
+    assert database.list_scheduled_payments() == events
+    assert database.get_lot(first["id"]) == first
+    second = database.list_lots()[1]
+    assert second["issue_id"] == first["issue_id"]
+    assert second["purchase_date"] == "2025-01-01"
+    assert second["purchase_price"] == "1000.01"
+    assert second["quantity"] == 3
+    assert second["bank_id"] != first["bank_id"]
+    assert database.list_actual_payments() == []
+
+
+def test_new_issue_keeps_coupon_dates_before_its_first_purchase(app, database, purchase_form):
+    # Add a new issue whose calendar begins before this user's first purchase.
+    purchase_form["purchase_date"] = "2025-01-01"
+    with app.test_client() as client:
+        assert client.post("/purchases/new", data=purchase_form).status_code == 302
+
+    # Retain the complete calendar without inventing actual payments for past dates.
+    assert database.list_scheduled_payments()[0]["planned_date"] == "2024-08-15"
+    assert database.list_actual_payments() == []
+
+
+@pytest.mark.parametrize("field, value", [
+    ("currency", "USD"), ("nominal", "500"), ("coupon_amount", "25"),
+    ("maturity_date", "2028-01-01"), ("coupon_dates", "2027-06-01"),
+])
+def test_conflicting_repeat_purchase_does_not_save_partial_records(app, database, purchase_form, field, value):
+    # Save the common issue and capture every record that a repeat submission might affect.
+    purchase_form["maturity_date"] = "2027-06-01"
+    with app.test_client() as client:
+        assert client.post("/purchases/new", data=purchase_form).status_code == 302
+        issues = database.list_issues()
+        lots = database.list_lots()
+        events = database.list_scheduled_payments()
+        banks = database.list_banks()
+
+        # Submit another purchase with one valid but conflicting common field.
+        purchase_form.update({"bank_name": "Банк Б", field: value})
+        response = client.post("/purchases/new", data=purchase_form)
+
+    # Keep the existing ISIN intact and report the conflict next to the submitted field.
+    assert response.status_code == 400
+    assert f'id="{field}-error"' in response.get_data(as_text=True)
+    assert database.list_issues() == issues
+    assert database.list_lots() == lots
+    assert database.list_scheduled_payments() == events
+    assert database.list_banks() == banks

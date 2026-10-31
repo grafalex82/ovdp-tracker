@@ -28,14 +28,36 @@ def app(app_config):
 
 
 @pytest.fixture
-def lot_data():
+def issue_data():
     return {
         "isin": "UA4000000001",
-        "purchase_date": "2024-02-15",
         "nominal": "1000",
         "currency": "UAH",
-        "purchase_price": "950.01",
-        "quantity": 10,
         "coupon_amount": "80",
         "maturity_date": "2027-06-01",
     }
+
+
+@pytest.fixture
+def lot_data():
+    return {"purchase_date": "2024-02-15", "purchase_price": "950.01", "quantity": 10}
+
+
+@pytest.fixture
+def issue(database, issue_data):
+    return database.add_issue(**issue_data)
+
+
+@pytest.fixture
+def bank(database):
+    return database.add_bank("Банк А")
+
+
+@pytest.fixture
+def lot(database, issue, bank, lot_data):
+    return database.add_lot(issue_id=issue["id"], bank_id=bank["id"], **lot_data)
+
+
+@pytest.fixture
+def payment(database, issue):
+    return database.add_scheduled_payment(issue_id=issue["id"], kind="coupon", planned_date="2024-08-15")
