@@ -244,3 +244,145 @@ def test_form_separates_purchase_fields_and_does_not_offer_source_metadata_input
     assert '<input' not in preview and '<textarea' not in preview and '<select' not in preview
     assert 'value="nbu" checked' in html and 'value="manual"' in html
     assert '<tbody id="source-payments">' in preview
+
+
+@pytest.mark.parametrize("currency", ["USD", "EUR"])
+@pytest.mark.parametrize("entry_mode", ["manual", "nbu"])
+def test_repeat_purchase_retains_saved_currency_and_independent_parameters(
+    app, app_config, database, purchase_form, monkeypatch, currency, entry_mode,
+):
+    # Save a foreign-currency issue and keep its complete calendar and original purchase for comparison.
+    purchase_form["currency"] = currency
+    with app.test_client() as client:
+        assert client.post("/purchases/new", data=purchase_form).status_code == 302
+    issues, events, lots = database.list_issues(), database.list_scheduled_payments(), database.list_lots()
+
+    # Resolve the issue locally and purchase again without resending the initial UAH/manual defaults.
+    def unexpected_request(isin):
+        raise AssertionError("Repeat purchase saving must not request NBU data.")
+
+    monkeypatch.setattr(app.extensions["nbu"], "lookup", unexpected_request)
+    with app.test_client() as client:
+        source = client.get(f'/issues/lookup?isin={purchase_form["isin"]}&source=local').json
+        assert source["existing"] and source["values"]["currency"] == currency
+        assert client.post("/purchases/new", data={
+            "isin": f' {purchase_form["isin"].lower()} ', "entry_mode": entry_mode,
+            "purchase_date": "2024-09-01", "purchase_price": "999.01", "quantity": "5", "bank_name": "Bank B",
+        }).status_code == 302
+
+    # Reopen storage and prove that purchase dates never trim the shared historical calendar.
+    create_app(app_config)
+    with Database(app_config["DATABASE"]) as reopened:
+        first, second = reopened.list_lots()
+        assert first == lots[0]
+        assert second["issue_id"] == first["issue_id"] and second["currency"] == currency
+        assert (second["purchase_date"], second["purchase_price"], second["quantity"]) == ("2024-09-01", "999.01", 5)
+        assert reopened.get_bank(second["bank_id"])["name"] == "Bank B"
+        assert reopened.list_issues() == issues and reopened.list_scheduled_payments() == events
+        assert events[0]["planned_date"] < second["purchase_date"]
+
+
+@pytest.mark.parametrize("entry_mode, issue_mode", [
+    ("manual", "manual"), ("manual", "existing"), ("nbu", "auto"), ("nbu", "existing"),
+])
+@pytest.mark.parametrize("field, value", [
+    ("currency", "USD"), ("nominal", "500"), ("issue_date", "2023-02-01"),
+    ("nominal_rate", "17"), ("coupon_period", "183"), ("bond_type", "Different bond type"),
+    ("maturity_date", "2028-01-01"), ("redemption_amount", "1100"),
+    ("coupon_schedule", "2024-08-15 80\n2027-06-01 86"),
+    ("coupon_schedule", "2024-08-16 80\n2027-06-01 85"),
+    ("coupon_schedule", "2027-06-01 85"),
+])
+def test_repeat_purchase_rejects_conflicts_before_mode_normalization(
+    app, database, purchase_form, entry_mode, issue_mode, field, value,
+):
+    # Save shared metadata, historical coupons and a fact that no repeat purchase may change.
+    purchase_form["maturity_date"] = "2027-06-01"
+    with app.test_client() as client:
+        assert client.post("/purchases/new", data=purchase_form).status_code == 302
+    issues, events, lots, banks = (
+        database.list_issues(), database.list_scheduled_payments(), database.list_lots(), database.list_banks(),
+    )
+    actual = database.add_actual_payment(
+        lot_id=lots[0]["id"], scheduled_payment_id=events[0]["id"], actual_date="2024-08-16", amount="795",
+    )
+
+    # Attempt to bypass shared-field checks through every source-selection path.
+    submitted = {
+        **purchase_form, "entry_mode": entry_mode, "issue_mode": issue_mode, "bank_name": "Unsaved bank", field: value,
+    }
+    with app.test_client() as client:
+        response = client.post("/purchases/new", data=submitted)
+    html = response.get_data(as_text=True)
+    assert response.status_code == 400
+    error_field = "coupon_schedule" if field == "redemption_amount" else field
+    preview = html.split('<section id="issue-preview"', 1)[1].split("</section>", 1)[0]
+    assert f'id="{error_field}-error"' in preview and "conflict" in preview
+    assert '<fieldset id="manual-fields" hidden disabled>' in html
+    assert 'id="issue_mode" name="issue_mode" value="existing">' in html
+
+    # Leave the complete issue, original purchase, bank list and confirmed receipt untouched.
+    assert database.list_issues() == issues and database.list_scheduled_payments() == events
+    assert database.list_lots() == lots and database.list_banks() == banks
+    assert database.list_actual_payments() == [actual]
+
+
+def test_invalid_repeat_purchase_renders_saved_foreign_issue_without_editable_fields(app, database, purchase_form):
+    # Save a foreign issue, then submit only erroneous purchase parameters from manual mode.
+    purchase_form["currency"] = "USD"
+    with app.test_client() as client:
+        assert client.post("/purchases/new", data=purchase_form).status_code == 302
+        response = client.post("/purchases/new", data={
+            "isin": purchase_form["isin"], "entry_mode": "manual", "purchase_date": "2024-09-01",
+            "purchase_price": "999", "quantity": "0", "bank_name": "Unsaved bank",
+        })
+
+    # Keep saved values and the full calendar visible even before JavaScript initializes the page.
+    html = response.get_data(as_text=True)
+    preview = html.split('<section id="issue-preview"', 1)[1].split("</section>", 1)[0]
+    assert response.status_code == 400 and 'id="quantity-error"' in html
+    assert 'data-issue-field="currency">USD</dd>' in preview
+    assert 'id="source-coupon-count">2</dd>' in preview
+    assert "80,00 USD" in preview and "85,00 USD" in preview and "1000,00 USD" in preview
+    assert '<fieldset id="manual-fields" hidden disabled>' in html
+    assert 'value="999"' in html and 'value="Unsaved bank"' in html
+    assert len(database.list_lots()) == len(database.list_banks()) == 1
+
+
+@pytest.mark.parametrize("repeat", [False, True])
+def test_failed_purchase_write_rolls_back_issue_calendar_and_new_bank(
+    app, database, purchase_form, monkeypatch, repeat,
+):
+    # Optionally seed an existing issue before simulating a failure after the new bank is written.
+    if repeat:
+        with app.test_client() as client:
+            assert client.post("/purchases/new", data=purchase_form).status_code == 302
+    issues, events, lots, banks = (
+        database.list_issues(), database.list_scheduled_payments(), database.list_lots(), database.list_banks(),
+    )
+
+    # Fail the last write to exercise rollback for both new and saved shared issues.
+    def fail_purchase(self, **parameters):
+        raise DatabaseError("Simulated purchase storage failure.")
+
+    monkeypatch.setattr(Database, "add_lot", fail_purchase)
+    purchase_form.update({"entry_mode": "manual", "bank_name": "Unsaved bank", "maturity_date": "2027-06-01"})
+    if repeat:
+        purchase_form = {key: purchase_form[key] for key in (
+            "isin", "entry_mode", "bank_name", "purchase_date", "purchase_price", "quantity",
+        )}
+    with app.test_client() as client:
+        response = client.post("/purchases/new", data=purchase_form)
+
+    # Preserve all previous data without leaving the newly inserted bank or a partial new issue.
+    assert response.status_code == 503
+    assert database.list_issues() == issues and database.list_scheduled_payments() == events
+    assert database.list_lots() == lots and database.list_banks() == banks
+
+
+def test_nonexistent_saved_issue_cannot_bypass_explicit_creation_mode(app, database, purchase_form):
+    purchase_form["issue_mode"] = "existing"
+    with app.test_client() as client:
+        response = client.post("/purchases/new", data=purchase_form)
+    assert response.status_code == 400 and "Saved issue not found" in response.get_data(as_text=True)
+    assert database.list_issues() == database.list_lots() == database.list_banks() == []

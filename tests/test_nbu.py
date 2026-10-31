@@ -404,3 +404,51 @@ def test_invalid_purchase_retains_read_only_source_preview(app, database, securi
     assert "Середньострокові" in html and source["issue_token"] in html
     assert 'value="999"' in html and 'id="quantity-error"' in html
     assert database.list_issues() == []
+
+
+def test_repeat_purchase_rejects_posted_conflicts_even_with_a_valid_source_token(app, database, security, monkeypatch):
+    # Keep the same signed draft open while saving the first purchase of its issue.
+    monkeypatch.setattr(app.extensions["nbu"], "_download", lambda: [security])
+    with app.test_client() as client:
+        source = client.get("/issues/lookup?isin=UA4000228381").json
+        form = {
+            "isin": "UA4000228381", "entry_mode": "nbu", "issue_mode": "auto", "loaded_isin": "UA4000228381",
+            "issue_token": source["issue_token"], "purchase_date": "2024-01-01", "purchase_price": "999",
+            "quantity": "3", "bank_name": "Bank A",
+        }
+        assert client.post("/purchases/new", data=form).status_code == 302
+        issues, events, lots = database.list_issues(), database.list_scheduled_payments(), database.list_lots()
+
+        # A signed token must not hide conflicting fields once this ISIN has become a saved issue.
+        response = client.post("/purchases/new", data={**form, "currency": "USD", "bank_name": "Unsaved bank"})
+    assert response.status_code == 400 and 'id="currency-error"' in response.get_data(as_text=True)
+    assert database.list_issues() == issues and database.list_scheduled_payments() == events
+    assert database.list_lots() == lots and len(database.list_banks()) == 1
+
+
+@pytest.mark.parametrize("changed", ["currency", "coupon_amount"])
+def test_signed_draft_conflicting_with_an_issue_saved_after_lookup_is_rejected(
+    app, database, security, monkeypatch, changed,
+):
+    # Load an unsaved draft, then save a different complete issue before that draft is submitted.
+    monkeypatch.setattr(app.extensions["nbu"], "_download", lambda: [security])
+    with app.test_client() as client:
+        source = client.get("/issues/lookup?isin=UA4000228381").json
+    data = parse_bond_data(security)
+    if changed == "currency":
+        data["issue"]["currency"] = "USD"
+    else:
+        data["payments"][0]["amount"] = "80"
+    issue = database.add_issue(**data["issue"])
+    events = [database.add_scheduled_payment(issue_id=issue["id"], **event) for event in data["payments"]]
+
+    # Compare the signed calendar too, even though the browser sends no editable source fields.
+    with app.test_client() as client:
+        response = client.post("/purchases/new", data={
+            "isin": issue["isin"], "entry_mode": "nbu", "issue_mode": "auto", "loaded_isin": issue["isin"],
+            "issue_token": source["issue_token"], "purchase_date": "2024-01-01", "purchase_price": "999",
+            "quantity": "3", "bank_name": "Unsaved bank",
+        })
+    assert response.status_code == 400 and "conflicts with the saved ISIN" in response.get_data(as_text=True)
+    assert database.list_issues() == [issue] and database.list_scheduled_payments() == events
+    assert database.list_lots() == database.list_banks() == []

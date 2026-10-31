@@ -12,7 +12,7 @@ from .portfolio import get_lot_details, list_lot_groups
 from .nbu import NbuError, NbuNotFound
 from .purchases import (
     CURRENCIES, IssueValidationError, PurchaseValidationError, create_purchase, issue_form_values, issue_signature,
-    validate_imported_issue,
+    validate_imported_issue, validate_issue,
 )
 
 purchase_pages = Blueprint("purchases", __name__)
@@ -61,7 +61,7 @@ def new_purchase(database: Database):
     if request.method == "POST":
         values = request.form.to_dict()
         try:
-            values = _prepare_purchase_values(values)
+            values = _prepare_purchase_values(database, values)
             create_purchase(database, values, today)
         except PurchaseValidationError as error:
             errors = error.errors
@@ -75,14 +75,15 @@ def new_purchase(database: Database):
 
     # Restore disabled saved fields for display after a rejected repeat purchase.
     values.setdefault("entry_mode", "manual" if values.get("issue_mode") == "manual" else "nbu")
-    values.setdefault("nominal", "1000")
-    values.setdefault("currency", "UAH")
     source_values = values if values.get("issue_mode") == "auto" else {}
     issue = database.get_issue_by_isin(values.get("isin", ""))
     if issue:
         defaults = issue_form_values(issue, database.list_scheduled_payments(issue["id"]))
-        values = {**defaults, **values}
+        values = {**defaults, **values, "issue_mode": "existing"}
         source_values = defaults
+    else:
+        values.setdefault("nominal", "1000")
+        values.setdefault("currency", "UAH")
 
     # Render the same form with field errors and the original input strings.
     return render_template(
@@ -91,7 +92,12 @@ def new_purchase(database: Database):
     ), status
 
 
-def _prepare_purchase_values(values: dict) -> dict:
+def _prepare_purchase_values(database: Database, values: dict) -> dict:
+    # Check saved issues before source-specific normalization can discard conflicting submitted fields.
+    issue = database.get_issue_by_isin(values.get("isin", ""))
+    if issue and (values.get("issue_mode") != "auto" or not values.get("issue_token")):
+        return {**values, "issue_mode": "existing"}
+
     # Restore read-only source values from a signed snapshot without another NBU request.
     if values.get("issue_mode") == "auto":
         try:
@@ -102,6 +108,14 @@ def _prepare_purchase_values(values: dict) -> dict:
         if source["isin"] != values.get("isin", "").strip().upper():
             values["issue_mode"] = "pending"
             raise PurchaseValidationError({"isin": "Loaded data belongs to a different ISIN. Reload the issue."})
+        if issue:
+            parsed = validate_issue(source)
+            events = database.list_scheduled_payments(issue["id"])
+            if issue_signature(parsed, parsed["payments"]) != issue_signature(issue, events):
+                raise PurchaseValidationError({
+                    "isin": "Loaded NBU data conflicts with the saved ISIN. Reload the issue.",
+                })
+            return {**source, **values, "issue_mode": "existing"}
         return {**values, **source}
 
     # Limit the explicit manual form to nominal, currency and coupon dates with their own amounts.

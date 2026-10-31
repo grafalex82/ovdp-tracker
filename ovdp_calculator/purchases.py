@@ -320,8 +320,10 @@ def create_purchase(database: Database, values: dict, today: date | None = None)
     # Resolve the saved issue and validate against a stable snapshot within the write transaction.
     with database.transaction():
         issue = database.get_issue_by_isin(values.get("isin", ""))
+        if issue is None and values.get("issue_mode") == "existing":
+            raise PurchaseValidationError({"isin": "Saved issue not found. Load NBU data or choose manual entry."})
         original = database.list_scheduled_payments(issue["id"]) if issue else []
-        submitted = {**issue_form_values(issue, original), "issue_mode": "existing", **values} if issue else values
+        submitted = {**issue_form_values(issue, original), **values, "issue_mode": "existing"} if issue else values
         purchase = validate_purchase(submitted, today if today is not None else date.today())
         bank_name = purchase.pop("bank_name")
         events = purchase.pop("payments")
@@ -334,6 +336,8 @@ def create_purchase(database: Database, values: dict, today: date | None = None)
                 stored = issue[field]
                 if field == "nominal":
                     stored, value = parse_money(stored), parse_money(value)
+                if field == "nominal_rate" and stored and value:
+                    stored, value = Decimal(stored), Decimal(value)
                 if stored != value:
                     errors[field] = "This field conflicts with the existing ISIN."
             expected = [(event["kind"], event["planned_date"], parse_money(event["amount"])) for event in original]

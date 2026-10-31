@@ -87,6 +87,7 @@ function updateMode() {
   const manual = manualSelected();
   manualFields.hidden = !manual || mode.value === "existing";
   manualFields.disabled = manualFields.hidden;
+  document.getElementById("existing-issue-hint").hidden = mode.value !== "existing";
   document.getElementById("nbu-controls").hidden = manual;
   save.disabled = mode.value === "pending";
   renderPreview();
