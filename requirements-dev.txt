@@ -1,0 +1,7 @@
+-r requirements.txt
+pytest==9.1.1
+iniconfig==2.3.0
+packaging==26.0
+pluggy==1.6.0
+Pygments==2.19.2
+colorama==0.4.6; sys_platform == "win32"

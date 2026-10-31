@@ -1,9 +1,10 @@
-"""Запуск командой python -m ovdp_calculator."""
+"""Start the application with python -m ovdp_calculator."""
 
 from . import create_app
 
 
 def main() -> None:
+    """Serve the local application until interrupted."""
     create_app().run(
         host="127.0.0.1",
         port=5000,
