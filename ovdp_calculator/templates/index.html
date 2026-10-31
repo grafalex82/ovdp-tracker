@@ -1,51 +1,64 @@
 {% extends "base.html" %}
-{% if history %}{% set breadcrumbs = [('Портфель', url_for('index')), ('Закрытые покупки', none)] %}{% endif %}
-{% block title %}{% if history %}Закрытые покупки — {% endif %}Трекер ОВДП{% endblock %}
+{% if history %}{% set breadcrumbs = [('Портфель', url_for('index')), ('Закрытые позиции', none)] %}{% endif %}
+{% block title %}{% if history %}Закрытые позиции — {% endif %}Трекер ОВДП{% endblock %}
 {% block main_class %}portfolio{% endblock %}
+{% block scripts %}<script src="{{ url_for('static', filename='portfolio.js') }}" defer></script>{% endblock %}
 {% block content %}
-      <nav aria-label="Список покупок" class="actions">
+      <nav aria-label="Позиции портфеля" class="actions">
         {% if history %}
-        <a href="{{ url_for('index') }}">Действующие покупки</a>
-        <span aria-current="page">Закрытые покупки</span>
+        <a href="{{ url_for('index', currency=currency) }}">Действующие позиции</a>
+        <span aria-current="page">Закрытые позиции</span>
         {% else %}
-        <span aria-current="page">Действующие покупки</span>
-        <a href="{{ url_for('purchases.purchase_history') }}">Закрытые покупки</a>
+        <span aria-current="page">Действующие позиции</span>
+        <a href="{{ url_for('purchases.purchase_history', currency=currency) }}">Закрытые позиции</a>
         {% endif %}
       </nav>
-      <h1>{% if history %}Закрытые покупки{% else %}Портфель{% endif %}</h1>
+      <h1>{% if history %}Закрытые позиции{% else %}Портфель{% endif %}</h1>
       <p><a class="button" href="{{ url_for('purchases.new_purchase') }}">Добавить облигацию</a></p>
       {% if saved %}<p role="status" class="success">Покупка сохранена.</p>{% endif %}
-      {% for group in groups %}
-      <section class="issue-group" data-isin="{{ group.isin }}" data-currency="{{ group.currency }}">
-        <h2>{{ group.isin }} <span class="hint">{{ group.currency }}</span></h2>
-        <div class="table-scroll" role="region" aria-label="Покупки {{ group.isin }}" tabindex="0">
-          <table>
-            <caption>Покупки {{ group.isin }} · {{ group.currency }}</caption>
-            <thead>
-              <tr>
-                <th scope="col">Покупка</th><th scope="col">Банк</th><th scope="col">Дата покупки</th>
-                <th scope="col">Куплено, шт.</th><th scope="col">Осталось, шт.</th>
-                <th scope="col">Цена одной, {{ group.currency }}</th>
-                <th scope="col">Стоимость, {{ group.currency }}</th><th scope="col">Погашение</th>
-              </tr>
-            </thead>
-            <tbody>
-              {% for lot in group.lots %}
-              <tr id="lot-{{ lot.id }}">
-                <td><a href="{{ url_for('purchases.purchase_details', lot_id=lot.id) }}">Покупка №{{ lot.id }}</a></td>
-                <td>{{ lot.bank_name }}</td><td>{{ lot.purchase_date }}</td><td>{{ lot.quantity }}</td>
-                <td>{{ lot.remaining_quantity }}</td><td>{{ lot.purchase_price|money }}</td>
-                <td>{{ lot.purchase_total|money }}</td><td>{{ lot.maturity_date }}</td>
-              </tr>
-              {% endfor %}
-            </tbody>
-          </table>
-        </div>
-      </section>
+      <form method="get" class="currency-filter">
+        <label for="currency">Валюта выпуска</label>
+        <select id="currency" name="currency">
+          {% for code in currencies %}
+          <option value="{{ code }}"{% if code == currency %} selected{% endif %}>{{ code }}</option>
+          {% endfor %}
+        </select>
+        <noscript><button type="submit">Показать</button></noscript>
+      </form>
+      {% if positions %}
+      <div class="table-scroll" role="region" aria-label="Позиции {{ currency }}" tabindex="0">
+        <table>
+          <caption>{% if history %}Закрытые{% else %}Действующие{% endif %} позиции · {{ currency }}.
+            Купон указан на одну облигацию; доходность — номинальная, % годовых.</caption>
+          <thead>
+            <tr><th scope="col">ISIN</th><th scope="col">Количество</th>
+              <th scope="col">Купон</th>
+              <th scope="col">Дата купона</th><th scope="col">Погашение</th>
+              <th scope="col">Доходность</th></tr>
+          </thead>
+          <tbody>
+            {% for position in positions %}
+            <tr data-isin="{{ position.isin }}" data-currency="{{ position.currency }}">
+              <td><a href="{{ url_for('purchases.issue_details', isin=position.isin) }}">{{ position.isin }}</a></td>
+              <td>{{ position.remaining_quantity }}</td>
+              {% if position.next_coupon %}
+              <td>{{ position.next_coupon.amount|money }}</td><td>{{ position.next_coupon.planned_date }}</td>
+              {% else %}
+              <td>Нет будущего купона</td><td>—</td>
+              {% endif %}
+              <td>{{ position.maturity_date }}</td>
+              <td>{% if position.nominal_rate %}{{ position.nominal_rate|replace('.', ',') }}%
+                {% else %}Не указана{% endif %}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
       {% else %}
       <p class="empty-state">
-        {% if history %}Закрытых покупок пока нет.
-        {% else %}В портфеле пока нет действующих покупок. Добавьте облигацию, чтобы увидеть её здесь.{% endif %}
+        {% if history %}Закрытых позиций в {{ currency }} пока нет.
+        {% else %}В портфеле пока нет действующих позиций в {{ currency }}.
+        Добавьте облигацию или выберите другую валюту.{% endif %}
       </p>
-      {% endfor %}
+      {% endif %}
 {% endblock %}

@@ -1,0 +1,75 @@
+{% extends "base.html" %}
+{% set breadcrumbs = [('Портфель', url_for('index')), (position.isin, none)] %}
+{% block title %}{{ position.isin }} — Трекер ОВДП{% endblock %}
+{% block main_class %}portfolio{% endblock %}
+{% block content %}
+      <h1>{{ position.isin }}</h1>
+      <p class="status">{% if position.closed %}Закрытая позиция{% else %}Действующая позиция{% endif %}</p>
+      <p><a href="{{ url_for('index', currency=position.currency) }}">Портфель в {{ position.currency }}</a>
+        {% if position.closed %}
+        · <a href="{{ url_for('purchases.purchase_history', currency=position.currency) }}">Закрытые позиции</a>
+        {% endif %}
+      </p>
+      <dl class="purchase-fields">
+        <dt>Валюта выпуска</dt><dd>{{ position.currency }}</dd>
+        <dt>Осталось облигаций</dt><dd>{{ position.remaining_quantity }}</dd>
+        <dt>Номинал одной облигации</dt><dd>{{ position.nominal|money }} {{ position.currency }}</dd>
+        <dt>Дата выпуска</dt><dd>{{ position.issue_date or 'Не указана' }}</dd>
+        <dt>Номинальная ставка</dt>
+        <dd>{{ position.nominal_rate or 'Не указана' }}{% if position.nominal_rate %}%{% endif %}</dd>
+        <dt>Купонный период, дней</dt>
+        <dd>{{ position.coupon_period if position.coupon_period is not none else 'Не указан' }}</dd>
+        <dt>Вид облигации</dt><dd>{{ position.bond_type or 'Не указан' }}</dd>
+        <dt>Общее количество купонов</dt>
+        <dd>{{ position.schedule|selectattr('kind', 'equalto', 'coupon')|list|length }}</dd>
+        <dt>Дата погашения</dt><dd>{{ position.maturity_date }}</dd>
+      </dl>
+      <h2>Общий календарь выпуска</h2>
+      <p class="hint">Календарь един для всех покупок ISIN, включая даты до покупки.
+        Каждая дата хранит свою сумму на одну облигацию; погашение показано отдельно от купона.</p>
+      <div class="table-scroll" role="region" aria-label="Календарь выплат" tabindex="0">
+        <table>
+          <caption>Расписание {{ position.isin }} · {{ position.currency }}</caption>
+          <thead><tr><th scope="col">Дата</th><th scope="col">Выплата</th>
+            <th scope="col">На одну облигацию, {{ position.currency }}</th></tr></thead>
+          <tbody>
+            {% for event in position.schedule %}
+            <tr data-event-id="{{ event.id }}">
+              <td>{{ event.planned_date }}</td>
+              <td>{% if event.kind == 'coupon' %}Купон{% else %}Погашение{% endif %}</td>
+              <td>{{ event.amount|money }}</td>
+            </tr>
+            {% else %}<tr><td colspan="3">Расписание пока не заполнено.</td></tr>{% endfor %}
+          </tbody>
+        </table>
+      </div>
+      <h2>Все покупки</h2>
+      <div class="table-scroll" role="region" aria-label="Покупки {{ position.isin }}" tabindex="0">
+        <table>
+          <caption>Действующие и закрытые покупки · {{ position.currency }}</caption>
+          <thead><tr><th scope="col">Покупка</th><th scope="col">Статус</th><th scope="col">Банк</th>
+            <th scope="col">Дата покупки</th><th scope="col">Куплено, шт.</th><th scope="col">Осталось, шт.</th>
+            <th scope="col">Цена одной, {{ position.currency }}</th>
+            <th scope="col">Стоимость, {{ position.currency }}</th></tr></thead>
+          <tbody>
+            {% for lot in position.lots %}
+            <tr id="lot-{{ lot.id }}">
+              <td><a href="{{ url_for('purchases.purchase_details', lot_id=lot.id) }}">Покупка №{{ lot.id }}</a></td>
+              <td>{% if lot.closed %}Закрыта{% else %}Действующая{% endif %}</td>
+              <td>{{ lot.bank_name }}</td><td>{{ lot.purchase_date }}</td>
+              <td>{{ lot.quantity }}</td><td>{{ lot.remaining_quantity }}</td>
+              <td>{{ lot.purchase_price|money }}</td><td>{{ lot.purchase_total|money }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      <h2>Причитающиеся выплаты покупок</h2>
+      <p class="hint">План учитывает дату покупки и продажи.
+        Фактические дата и сумма относятся только к указанной покупке и не меняют общий календарь.
+        Плановая дата сама по себе не подтверждает получение денег.</p>
+      {% for lot in position.lots %}
+      <h3><a href="{{ url_for('purchases.purchase_details', lot_id=lot.id) }}">Покупка №{{ lot.id }}</a></h3>
+      {% include "_purchase_payments.html" %}
+      {% endfor %}
+{% endblock %}

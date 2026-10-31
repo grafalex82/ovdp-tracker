@@ -273,7 +273,7 @@ def test_known_issue_and_actual_receipts_survive_changed_or_unavailable_source(a
         assert response.json["existing"] is True
         assert "differs" in response.json["warning"]
         assert "95.90" in response.json["values"]["coupon_schedule"]
-        assert response.json["details_url"] == f'/purchases/{lot["id"]}'
+        assert response.json["details_url"] == f'/issues/{lot["isin"]}'
     assert database.list_scheduled_payments() == events
     assert database.list_actual_payments() == [actual]
 

@@ -10,13 +10,16 @@ def navigation(html, label):
 
 
 @pytest.mark.parametrize("page, current", [
-    ("/", "Портфель"), ("/history", "Закрытые покупки"),
-    ("/purchases/new", "Добавить облигацию"), ("purchase", "Покупка №"),
+    ("/", "Портфель"), ("/history", "Закрытые позиции"),
+    ("/purchases/new", "Добавить облигацию"), ("purchase", "Покупка №"), ("issue", "ISIN"),
 ])
 def test_available_pages_share_sections_and_current_breadcrumb(app, lot, page, current):
     # Open each page directly without relying on earlier navigation state.
     path = f'/purchases/{lot["id"]}' if page == "purchase" else page
     current = f'{current}{lot["id"]}' if page == "purchase" else current
+    if page == "issue":
+        path = f'/issues/{lot["isin"]}'
+        current = lot["isin"]
     with app.test_client() as client:
         response = client.get(path)
     html = response.get_data(as_text=True)
@@ -30,7 +33,7 @@ def test_available_pages_share_sections_and_current_breadcrumb(app, lot, page, c
     assert '<span aria-disabled="true">Статистика</span>' in sections
     assert "Скоро" not in sections
     assert "Добавить облигацию" not in sections
-    assert "Закрытые покупки" not in sections
+    assert "Закрытые позиции" not in sections
     assert f'<span aria-current="page">{current}</span>' in crumbs
     assert crumbs.count('aria-current="page"') == 1
     assert f'>{current}</a>' not in crumbs
@@ -53,12 +56,17 @@ def test_purchase_breadcrumbs_ignore_referrer_and_history_state(app, database, l
             assert navigation(reached, "Хлебные крошки") == navigation(direct, "Хлебные крошки")
             assert navigation(reached, "Основные разделы") == navigation(direct, "Основные разделы")
 
+    # Resolve the canonical ISIN parent even when the purchase was opened directly or is closed.
+    crumbs = navigation(direct, "Хлебные крошки")
+    assert f'<a href="/issues/{lot["isin"]}">{lot["isin"]}</a>' in crumbs
+    assert crumbs.index(">Портфель</a>") < crumbs.index(f'>{lot["isin"]}</a>') < crumbs.index(f'Покупка №{lot["id"]}')
+
 
 def test_visible_page_links_resolve_without_writing_data(app, database, lot):
     # Follow every rendered link on the currently available screens, including their parent links.
     before = database.list_lots()
     with app.test_client() as client:
-        for path in ("/", "/history", "/purchases/new", f'/purchases/{lot["id"]}'):
+        for path in ("/", "/history", "/purchases/new", f'/issues/{lot["isin"]}', f'/purchases/{lot["id"]}'):
             html = client.get(path).get_data(as_text=True)
             for href in re.findall(r'<a\b[^>]*href="([^"]+)"', html):
                 assert href.startswith("/") and href != "#"

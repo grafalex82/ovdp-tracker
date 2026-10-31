@@ -2,13 +2,12 @@
 
 from secrets import token_hex
 
-from flask import Flask, render_template, request
+from flask import Flask
 from itsdangerous import URLSafeSerializer
 
 from .db import Database
-from .portfolio import list_lot_groups
 from .nbu import NbuClient
-from .web import purchase_pages, with_database
+from .web import purchase_pages, render_portfolio, with_database
 
 
 def create_app(config: dict | None = None) -> Flask:
@@ -33,9 +32,7 @@ def create_app(config: dict | None = None) -> Flask:
     @app.get("/")
     @with_database
     def index(database: Database):
-        return render_template(
-            "index.html", groups=list_lot_groups(database), history=False, saved=request.args.get("saved") == "1"
-        )
+        return render_portfolio(database)
 
     # Return the fully configured application to the caller.
     return app

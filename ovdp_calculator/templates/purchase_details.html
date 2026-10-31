@@ -1,11 +1,12 @@
 {% extends "base.html" %}
-{% set breadcrumbs = [('Портфель', url_for('index')), ('Покупка №' ~ lot.id, none)] %}
+{% set breadcrumbs = [('Портфель', url_for('index')),
+  (lot.isin, url_for('purchases.issue_details', isin=lot.isin)), ('Покупка №' ~ lot.id, none)] %}
 {% block title %}Покупка №{{ lot.id }} — {{ lot.isin }} — Трекер ОВДП{% endblock %}
 {% block content %}
       <h1>Покупка №{{ lot.id }}</h1>
       <h2>{{ lot.isin }}</h2>
       {% if lot.closed %}
-      <p><a href="{{ url_for('purchases.purchase_history') }}">Закрытые покупки</a></p>
+      <p><a href="{{ url_for('purchases.issue_details', isin=lot.isin) }}">Все покупки {{ lot.isin }}</a></p>
       {% endif %}
       <p class="status">{% if lot.closed %}Закрыта{% else %}Действующая{% endif %}</p>
       <dl class="purchase-fields">
@@ -44,4 +45,6 @@
           </tbody>
         </table>
       </div>
+      <h2>Причитающиеся выплаты покупки</h2>
+      {% include "_purchase_payments.html" %}
 {% endblock %}

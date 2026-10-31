@@ -139,8 +139,22 @@ button {
   background: #f0fdf4;
 }
 
-.issue-group {
-  margin-top: 1.75rem;
+.currency-filter {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 0.5rem;
+  margin-bottom: 1.5rem;
+}
+
+.currency-filter select, .currency-filter button {
+  width: auto;
+  margin: 0;
+}
+
+.currency-filter label {
+  align-self: center;
+  margin: 0;
 }
 
 .table-scroll {

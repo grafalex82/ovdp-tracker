@@ -8,7 +8,7 @@ from itsdangerous import BadSignature
 
 from .db import Database, DatabaseError
 from .money import operation_amount, parse_money
-from .portfolio import get_lot_details, list_lot_groups
+from .portfolio import get_lot_details, get_position_details, list_positions
 from .nbu import NbuError, NbuNotFound
 from .purchases import (
     CURRENCIES, IssueValidationError, PurchaseValidationError, create_purchase, issue_form_values, issue_signature,
@@ -62,7 +62,7 @@ def new_purchase(database: Database):
         values = request.form.to_dict()
         try:
             values = _prepare_purchase_values(database, values)
-            create_purchase(database, values, today)
+            purchase = create_purchase(database, values, today)
         except PurchaseValidationError as error:
             errors = error.errors
             status = 400
@@ -71,7 +71,7 @@ def new_purchase(database: Database):
             errors["form"] = "Could not save the purchase. No changes were saved; please try again."
             status = 503
         else:
-            return redirect(url_for("index", saved="1"))
+            return redirect(url_for("index", saved="1", currency=purchase["currency"]))
 
     # Restore disabled saved fields for display after a rejected repeat purchase.
     values.setdefault("entry_mode", "manual" if values.get("issue_mode") == "manual" else "nbu")
@@ -165,8 +165,9 @@ def lookup_issue(database: Database):
         values = issue_form_values(issue, events)
         if remote and issue_signature(remote["issue"], remote["payments"]) != issue_signature(issue, events):
             warning = "NBU data differs from the saved issue. Shared corrections must be made separately."
-        lots = [lot for lot in database.list_lots() if lot["issue_id"] == issue["id"]]
-        details_url = url_for("purchases.purchase_details", lot_id=lots[0]["id"]) if lots else None
+        details_url = url_for("purchases.issue_details", isin=issue["isin"])
+        if not any(lot["issue_id"] == issue["id"] for lot in database.list_lots()):
+            details_url = None
         return jsonify(values=values, existing=True, warning=warning, details_url=details_url)
 
     # Populate a new unsaved draft only after the complete NBU record passes validation.
@@ -179,8 +180,37 @@ def lookup_issue(database: Database):
 @purchase_pages.get("/history")
 @with_database
 def purchase_history(database: Database):
-    """Render closed purchases grouped by their shared ISIN."""
-    return render_template("index.html", groups=list_lot_groups(database, closed=True), history=True, saved=False)
+    """Render fully closed ISIN positions in the selected currency."""
+    return render_portfolio(database, closed=True)
+
+
+def render_portfolio(database: Database, *, closed: bool = False):
+    """Render active or closed ISIN positions after validating the selected currency."""
+
+    # Reject unsupported filters instead of silently showing a different currency.
+    currency = request.args.get("currency", "UAH")
+    if currency not in CURRENCIES:
+        abort(400, description="Unsupported portfolio currency.")
+
+    # Share currency selection and position rules between the portfolio and closed history.
+    return render_template(
+        "index.html", positions=list_positions(database, currency=currency, closed=closed), history=closed,
+        currency=currency, currencies=CURRENCIES, saved=request.args.get("saved") == "1" and not closed,
+    )
+
+
+@purchase_pages.get("/issues/<isin>")
+@with_database
+def issue_details(database: Database, isin: str):
+    """Render the ISIN position with all purchases, or return 404 when no position exists."""
+
+    # Resolve the position from its shared ISIN rather than an arbitrary purchase.
+    position = get_position_details(database, isin)
+    if position is None:
+        abort(404, description="Position not found.")
+
+    # Show the complete calendar and both active and closed purchases in their canonical parent page.
+    return render_template("issue_details.html", position=position)
 
 
 @purchase_pages.get("/purchases/<int:lot_id>")
