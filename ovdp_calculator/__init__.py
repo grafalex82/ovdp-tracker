@@ -1,8 +1,9 @@
 """Local application for tracking Ukrainian government bonds."""
 
-from flask import Flask, render_template
+from flask import Flask, render_template, request
 
 from .db import Database
+from .portfolio import list_lot_groups
 from .web import purchase_pages, with_database
 
 
@@ -26,7 +27,9 @@ def create_app(config: dict | None = None) -> Flask:
     @app.get("/")
     @with_database
     def index(database: Database):
-        return render_template("index.html")
+        return render_template(
+            "index.html", groups=list_lot_groups(database), history=False, saved=request.args.get("saved") == "1"
+        )
 
     # Return the fully configured application to the caller.
     return app

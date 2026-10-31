@@ -3,13 +3,53 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Трекер ОВДП</title>
+    <title>{% if history %}Закрытые покупки — {% endif %}Трекер ОВДП</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
   </head>
   <body>
-    <main>
+    <main class="portfolio">
       <h1>Трекер ОВДП</h1>
-      <p><a href="{{ url_for('purchases.new_purchase') }}">Добавить облигацию</a></p>
+      <nav aria-label="Список покупок" class="actions">
+        <a href="{{ url_for('index') }}" {% if not history %}aria-current="page"{% endif %}>Действующие покупки</a>
+        <a href="{{ url_for('purchases.purchase_history') }}"
+           {% if history %}aria-current="page"{% endif %}>Закрытые покупки</a>
+      </nav>
+      <h2>{% if history %}Закрытые покупки{% else %}Портфель{% endif %}</h2>
+      <p><a class="button" href="{{ url_for('purchases.new_purchase') }}">Добавить облигацию</a></p>
+      {% if saved %}<p role="status" class="success">Покупка сохранена.</p>{% endif %}
+      {% for group in groups %}
+      <section class="issue-group" data-isin="{{ group.isin }}" data-currency="{{ group.currency }}">
+        <h3>{{ group.isin }} <span class="hint">{{ group.currency }}</span></h3>
+        <div class="table-scroll" role="region" aria-label="Покупки {{ group.isin }}" tabindex="0">
+          <table>
+            <caption>Покупки {{ group.isin }} · {{ group.currency }}</caption>
+            <thead>
+              <tr>
+                <th scope="col">Покупка</th><th scope="col">Банк</th><th scope="col">Дата покупки</th>
+                <th scope="col">Куплено, шт.</th><th scope="col">Осталось, шт.</th>
+                <th scope="col">Цена одной, {{ group.currency }}</th>
+                <th scope="col">Стоимость, {{ group.currency }}</th><th scope="col">Погашение</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for lot in group.lots %}
+              <tr id="lot-{{ lot.id }}">
+                <td><a href="{{ url_for('purchases.purchase_details', lot_id=lot.id) }}">Покупка №{{ lot.id }}</a></td>
+                <td>{{ lot.bank_name }}</td><td>{{ lot.purchase_date }}</td><td>{{ lot.quantity }}</td>
+                <td>{{ lot.remaining_quantity }}</td><td>{{ lot.purchase_price|money }}</td>
+                <td>{{ lot.purchase_total|money }}</td><td>{{ lot.maturity_date }}</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </section>
+      {% else %}
+      <p class="empty-state">
+        {% if history %}Закрытых покупок пока нет.
+        {% else %}В портфеле пока нет действующих покупок. Добавьте облигацию, чтобы увидеть её здесь.{% endif %}
+      </p>
+      {% endfor %}
     </main>
   </body>
 </html>

@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Покупка №{{ lot.id }} — {{ lot.isin }} — Трекер ОВДП</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+  </head>
+  <body>
+    <main>
+      <nav class="actions">
+        <a href="{{ url_for('index') }}">Портфель</a>
+        {% if lot.closed %}<a href="{{ url_for('purchases.purchase_history') }}">Закрытые покупки</a>{% endif %}
+      </nav>
+      <h1>Покупка №{{ lot.id }}</h1>
+      <h2>{{ lot.isin }}</h2>
+      <p class="status">{% if lot.closed %}Закрыта{% else %}Действующая{% endif %}</p>
+      <dl class="purchase-fields">
+        <dt>ISIN</dt><dd>{{ lot.isin }}</dd>
+        <dt>Банк</dt><dd>{{ lot.bank_name }}</dd>
+        <dt>Дата покупки</dt><dd>{{ lot.purchase_date }}</dd>
+        <dt>Валюта выпуска</dt><dd>{{ lot.currency }}</dd>
+        <dt>Куплено облигаций</dt><dd>{{ lot.quantity }}</dd>
+        <dt>Осталось облигаций</dt><dd>{{ lot.remaining_quantity }}</dd>
+        <dt>Цена одной облигации</dt><dd>{{ lot.purchase_price|money }} {{ lot.currency }}</dd>
+        <dt>Стоимость покупки</dt><dd>{{ lot.purchase_total|money }} {{ lot.currency }}</dd>
+        <dt>Номинал одной облигации</dt><dd>{{ lot.nominal|money }} {{ lot.currency }}</dd>
+        <dt>Купон на одну облигацию</dt><dd>{{ lot.coupon_amount|money }} {{ lot.currency }}</dd>
+        <dt>Дата погашения</dt><dd>{{ lot.maturity_date }}</dd>
+      </dl>
+      <h2>Общий календарь выпуска</h2>
+      <p class="hint">Календарь един для всех покупок этого ISIN и включает сохранённые даты до покупки.
+        Плановая дата сама по себе не подтверждает получение денег.</p>
+      <div class="table-scroll" role="region" aria-label="Календарь выплат" tabindex="0">
+        <table>
+          <caption>Расписание {{ lot.isin }}</caption>
+          <thead><tr><th scope="col">Дата</th><th scope="col">Выплата</th></tr></thead>
+          <tbody>
+            {% for event in lot.schedule %}
+            <tr data-event-id="{{ event.id }}">
+              <td>{{ event.planned_date }}</td>
+              <td>{% if event.kind == 'coupon' %}Купон{% else %}Погашение{% endif %}</td>
+            </tr>
+            {% else %}<tr><td colspan="2">Расписание пока не заполнено.</td></tr>{% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </main>
+  </body>
+</html>

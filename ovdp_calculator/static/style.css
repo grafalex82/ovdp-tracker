@@ -58,3 +58,103 @@ button {
   margin-top: 1rem;
   cursor: pointer;
 }
+
+.portfolio {
+  max-width: 80rem;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem 1.5rem;
+}
+
+[aria-current="page"] {
+  font-weight: 700;
+}
+
+.button {
+  display: inline-block;
+  padding: 0.6rem 1rem;
+  border-radius: 0.35rem;
+  background: #1d4ed8;
+  color: white;
+  text-decoration: none;
+}
+
+.success {
+  padding: 0.75rem 1rem;
+  border: 1px solid #86b69a;
+  border-radius: 0.35rem;
+  color: #14532d;
+  background: #f0fdf4;
+}
+
+.issue-group {
+  margin-top: 1.75rem;
+}
+
+.table-scroll {
+  overflow-x: auto;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  text-align: left;
+}
+
+caption {
+  text-align: left;
+  color: #4b5563;
+  margin-bottom: 0.5rem;
+}
+
+th, td {
+  padding: 0.75rem;
+  border-bottom: 1px solid #d1d5db;
+  white-space: nowrap;
+}
+
+th {
+  background: #f3f4f6;
+}
+
+.purchase-fields {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 0.75rem 1.25rem;
+}
+
+.purchase-fields dt {
+  color: #4b5563;
+}
+
+.purchase-fields dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.empty-state {
+  padding: 1rem;
+  background: #f9fafb;
+}
+
+@media (max-width: 36rem) {
+  body {
+    padding: 0.75rem 0.5rem;
+  }
+
+  main {
+    padding: 1rem;
+  }
+
+  .purchase-fields {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0.25rem;
+  }
+
+  .purchase-fields dd {
+    margin-bottom: 0.75rem;
+  }
+}

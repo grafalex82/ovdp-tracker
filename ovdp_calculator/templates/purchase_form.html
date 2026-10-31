@@ -22,7 +22,6 @@
     <main>
       <nav><a href="{{ url_for('index') }}">Трекер ОВДП</a></nav>
       <h1>Новая покупка</h1>
-      {% if saved %}<p role="status">Покупка сохранена.</p>{% endif %}
       {% if errors %}<p role="alert" class="error">Please correct the errors below.</p>{% endif %}
       {% if errors.get('form') %}<p role="alert" class="error">{{ errors.form }}</p>{% endif %}
       <form method="post" action="{{ url_for('purchases.new_purchase') }}">
