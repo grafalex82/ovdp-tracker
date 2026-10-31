@@ -4,6 +4,8 @@ from contextlib import contextmanager
 from pathlib import Path
 import sqlite3
 
+from ovdp_calculator.money import parse_money
+
 DEFAULT_DATABASE = Path(__file__).resolve().parent.parent / "instance" / "portfolio.sqlite3"
 SCHEMA_VERSION = 1
 
@@ -80,7 +82,10 @@ class SchemaVersionError(DatabaseError):
 
 
 class Database:
-    """Own a SQLite connection and expose storage operations without Flask."""
+    """Own a SQLite connection and expose storage operations without Flask.
+
+    Monetary writes raise ValueError for invalid strings or more than two decimal places.
+    """
 
     def __init__(self, path: str | Path | None = None):
         """Open storage at path or the default location for None and initialize its schema."""
@@ -273,9 +278,9 @@ class Database:
         Args:
             isin: The bond issue identifier.
             purchase_date: The purchase date as an ISO date string.
-            nominal: The nominal value per bond as a decimal string.
+            nominal: The exact nominal value per bond as a decimal string, with a dot or comma separator.
             currency: The currency code: UAH, USD, or EUR.
-            purchase_price: The purchase price per bond as a decimal string.
+            purchase_price: The exact purchase price per bond as a decimal string.
             quantity: The positive integer number of purchased bonds.
             bank_id: The identifier of the bank used for this purchase.
             coupon_amount: The coupon amount per bond as a decimal string.
@@ -287,12 +292,12 @@ class Database:
         return self._insert_record("bond_lots", {
             "isin": isin,
             "purchase_date": purchase_date,
-            "nominal": nominal,
+            "nominal": str(parse_money(nominal)),
             "currency": currency,
-            "purchase_price": purchase_price,
+            "purchase_price": str(parse_money(purchase_price)),
             "quantity": quantity,
             "bank_id": bank_id,
-            "coupon_amount": coupon_amount,
+            "coupon_amount": str(parse_money(coupon_amount)),
             "maturity_date": maturity_date,
         })
 
@@ -330,11 +335,11 @@ class Database:
 
 
     def add_actual_payment(self, *, scheduled_payment_id: int, actual_date: str, amount: str) -> dict:
-        """Record the actual date and amount string for a scheduled event; return the confirmation dictionary."""
+        """Record an event's actual date and exact decimal amount string; return the confirmation dictionary."""
         return self._insert_record("actual_payments", {
             "scheduled_payment_id": scheduled_payment_id,
             "actual_date": actual_date,
-            "amount": amount,
+            "amount": str(parse_money(amount)),
         })
 
 
@@ -354,10 +359,10 @@ class Database:
 
 
     def add_sale(self, *, lot_id: int, sale_date: str, sale_price: str, quantity: int) -> dict:
-        """Record a lot's sale date, unit price string, and quantity; return the stored sale dictionary."""
+        """Record a lot's sale date, exact decimal unit price string, and quantity; return the sale dictionary."""
         return self._insert_record("sales", {
             "lot_id": lot_id, "sale_date": sale_date,
-            "sale_price": sale_price, "quantity": quantity,
+            "sale_price": str(parse_money(sale_price)), "quantity": quantity,
         })
 
 

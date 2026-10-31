@@ -34,7 +34,7 @@ def lot_data():
         "purchase_date": "2024-02-15",
         "nominal": "1000",
         "currency": "UAH",
-        "purchase_price": "950.005",
+        "purchase_price": "950.01",
         "quantity": 10,
         "coupon_amount": "80",
         "maturity_date": "2027-06-01",

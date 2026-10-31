@@ -3,6 +3,7 @@
 import pytest
 
 from ovdp_calculator.db import Database, DatabaseError, DataIntegrityError
+from ovdp_calculator.money import operation_amount, parse_money
 
 
 def add_history(database, bank_id, lot_data):
@@ -263,3 +264,74 @@ def test_closed_instance_cannot_be_used_or_reentered(database):
     with pytest.raises(DatabaseError, match="database is closed"):
         with database:
             pass
+
+
+def test_exact_monetary_values_survive_storage_restart(database, database_path, lot_data):
+    # Store exact cent amounts in every monetary field using both supported decimal separators.
+    lot_data.update(nominal="1000.00", purchase_price="1000,01", coupon_amount="80.12", quantity=3)
+    bank = database.add_bank("Bank A")
+    lot = database.add_lot(bank_id=bank["id"], **lot_data)
+    payment = database.add_scheduled_payment(lot_id=lot["id"], kind="coupon", planned_date="2024-08-15")
+    database.add_actual_payment(scheduled_payment_id=payment["id"], actual_date="2024-08-15", amount="795,01")
+    database.add_sale(lot_id=lot["id"], sale_date="2024-08-16", sale_price="1050,10", quantity=3)
+    database.close()
+
+    # Read the saved strings through a fresh connection, without converting through SQLite REAL or float.
+    with Database(database_path) as restarted:
+        stored = restarted.get_lot(lot["id"])
+        assert stored["nominal"] == "1000.00"
+        assert stored["purchase_price"] == "1000.01"
+        assert stored["coupon_amount"] == "80.12"
+        assert restarted.list_actual_payments(lot["id"])[0]["amount"] == "795.01"
+        assert restarted.list_sales(lot["id"])[0]["sale_price"] == "1050.10"
+        assert str(operation_amount(parse_money(stored["purchase_price"]), stored["quantity"])) == "3000.03"
+
+
+@pytest.mark.parametrize("field", ["nominal", "purchase_price", "coupon_amount", "sale_price", "amount"])
+@pytest.mark.parametrize("value, message", [
+    ("not-a-number", "finite decimal string"),
+    ("NaN", "finite decimal string"),
+    ("Infinity", "finite decimal string"),
+    (1000.005, "finite decimal string"),
+    ("1000,005", "at most two decimal places"),
+    ("80.123", "at most two decimal places"),
+    ("1000.010", "at most two decimal places"),
+])
+def test_invalid_monetary_input_is_rejected_before_storage(database, lot_data, field, value, message):
+    # Create a valid parent history for each kind of monetary record.
+    bank = database.add_bank("Bank A")
+    lot = database.add_lot(bank_id=bank["id"], **lot_data)
+    payment = database.add_scheduled_payment(lot_id=lot["id"], kind="coupon", planned_date="2024-08-15")
+
+    # Attempt the invalid write through its public storage method.
+    with pytest.raises(ValueError, match=message):
+        if field == "sale_price":
+            database.add_sale(lot_id=lot["id"], sale_date="2024-08-16", sale_price=value, quantity=3)
+        elif field == "amount":
+            database.add_actual_payment(scheduled_payment_id=payment["id"], actual_date="2024-08-15", amount=value)
+        else:
+            database.add_lot(bank_id=bank["id"], **{**lot_data, field: value})
+
+    # Confirm that rejecting a monetary value leaves the valid history intact.
+    assert database.list_lots() == [lot]
+    assert database.list_sales() == []
+    assert database.list_actual_payments() == []
+
+
+@pytest.mark.parametrize("entity", ["lot", "sale"])
+@pytest.mark.parametrize("quantity", [0, -1, 1.5])
+def test_stored_quantities_must_be_positive_integers(database, lot_data, entity, quantity):
+    # Prepare a valid purchase so a sale can reference an existing lot.
+    bank = database.add_bank("Bank A")
+    lot = database.add_lot(bank_id=bank["id"], **lot_data)
+
+    # Reject nonpositive and fractional quantities through storage constraints.
+    with pytest.raises(DataIntegrityError):
+        if entity == "lot":
+            database.add_lot(bank_id=bank["id"], **{**lot_data, "quantity": quantity})
+        else:
+            database.add_sale(lot_id=lot["id"], sale_date="2024-08-16", sale_price="1050.01", quantity=quantity)
+
+    # Preserve the valid purchase without leaving a rejected operation behind.
+    assert database.list_lots() == [lot]
+    assert database.list_sales() == []
