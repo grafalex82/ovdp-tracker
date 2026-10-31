@@ -1,0 +1,68 @@
+{% macro field(name, label, type='text', required=true, inputmode=none) %}
+  <label for="{{ name }}">{{ label }}</label>
+  <input id="{{ name }}" name="{{ name }}" type="{{ type }}" value="{{ values.get(name, '') }}"
+         {% if required %}required{% endif %} {% if inputmode %}inputmode="{{ inputmode }}"{% endif %}
+         {% if name == 'purchase_date' %}max="{{ today }}"{% endif %}
+         {% if errors.get(name) %}aria-invalid="true" aria-describedby="{{ name }}-error"{% endif %}>
+  {{ field_error(name) }}
+{% endmacro %}
+{% macro field_error(name) %}
+  {% if errors.get(name) %}<p class="error" id="{{ name }}-error">{{ errors[name] }}</p>{% endif %}
+{% endmacro %}
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Новая покупка — Трекер ОВДП</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <script src="{{ url_for('static', filename='purchase.js') }}" defer></script>
+  </head>
+  <body>
+    <main>
+      <nav><a href="{{ url_for('index') }}">Трекер ОВДП</a></nav>
+      <h1>Новая покупка</h1>
+      {% if saved %}<p role="status">Покупка сохранена.</p>{% endif %}
+      {% if errors %}<p role="alert" class="error">Please correct the errors below.</p>{% endif %}
+      {% if errors.get('form') %}<p role="alert" class="error">{{ errors.form }}</p>{% endif %}
+      <form method="post" action="{{ url_for('purchases.new_purchase') }}">
+        <input type="hidden" name="maturity_manual" id="maturity_manual"
+               value="{{ values.get('maturity_manual', '0') }}">
+        {{ field('isin', 'ISIN') }}
+        {{ field('purchase_date', 'Дата покупки', 'date') }}
+        <p class="hint">Можно указать прошедшую дату. Будущие покупки пока не поддерживаются.</p>
+        {{ field('nominal', 'Номинал одной облигации', inputmode='decimal') }}
+        <label for="currency">Валюта</label>
+        <select id="currency" name="currency" required
+                {% if errors.get('currency') %}aria-invalid="true" aria-describedby="currency-error"{% endif %}>
+          {% if values.get('currency') not in currencies %}
+          <option value="{{ values.get('currency', '') }}" selected>{{ values.get('currency', '') }}</option>
+          {% endif %}
+          {% for currency in currencies %}
+          <option value="{{ currency }}" {% if values.get('currency') == currency %}selected{% endif %}>
+            {{ currency }}
+          </option>
+          {% endfor %}
+        </select>
+        {{ field_error('currency') }}
+        {{ field('purchase_price', 'Цена одной облигации', inputmode='decimal') }}
+        {{ field('quantity', 'Количество облигаций', inputmode='numeric') }}
+        {{ field('bank_name', 'Банк') }}
+        <p class="hint">Суммы указываются в валюте покупки, максимум два знака после точки или запятой.</p>
+        {{ field('coupon_amount', 'Купон на одну облигацию', inputmode='decimal') }}
+        <label for="coupon_dates">Купонные даты</label>
+        <textarea id="coupon_dates" name="coupon_dates" rows="5" aria-describedby="coupon_dates-hint
+                  {% if errors.get('coupon_dates') %}coupon_dates-error{% endif %}"
+                  {% if errors.get('coupon_dates') %}aria-invalid="true"{% endif %}
+                  >{{ values.get('coupon_dates', '') }}</textarea>
+        <p id="coupon_dates-hint" class="hint">По одной дате ГГГГ-ММ-ДД в строке, включая прошедшие даты.
+          Для бескупонной покупки оставьте список пустым и укажите купон 0.</p>
+        {{ field_error('coupon_dates') }}
+        {{ field('maturity_date', 'Дата погашения', 'date', required=false) }}
+        <p class="hint">Подставляется последняя купонная дата, пока вы не измените погашение вручную.
+          Без купонов дата погашения обязательна.</p>
+        <button type="submit">Сохранить покупку</button>
+      </form>
+    </main>
+  </body>
+</html>

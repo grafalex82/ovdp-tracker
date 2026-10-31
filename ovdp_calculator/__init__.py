@@ -3,7 +3,7 @@
 from flask import Flask, render_template
 
 from .db import Database
-from .web import with_database
+from .web import purchase_pages, with_database
 
 
 def create_app(config: dict | None = None) -> Flask:
@@ -18,6 +18,9 @@ def create_app(config: dict | None = None) -> Flask:
     # Initialize or verify storage before accepting requests.
     with Database(app.config.get("DATABASE")):
         pass
+
+    # Register purchase forms with request-specific storage.
+    app.register_blueprint(purchase_pages)
 
     # Register the home page with an explicitly supplied database dependency.
     @app.get("/")
