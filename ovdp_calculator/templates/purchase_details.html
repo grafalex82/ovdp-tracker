@@ -1,19 +1,12 @@
-<!doctype html>
-<html lang="ru">
-  <head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Покупка №{{ lot.id }} — {{ lot.isin }} — Трекер ОВДП</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
-  </head>
-  <body>
-    <main>
-      <nav class="actions">
-        <a href="{{ url_for('index') }}">Портфель</a>
-        {% if lot.closed %}<a href="{{ url_for('purchases.purchase_history') }}">Закрытые покупки</a>{% endif %}
-      </nav>
+{% extends "base.html" %}
+{% set breadcrumbs = [('Портфель', url_for('index')), ('Покупка №' ~ lot.id, none)] %}
+{% block title %}Покупка №{{ lot.id }} — {{ lot.isin }} — Трекер ОВДП{% endblock %}
+{% block content %}
       <h1>Покупка №{{ lot.id }}</h1>
       <h2>{{ lot.isin }}</h2>
+      {% if lot.closed %}
+      <p><a href="{{ url_for('purchases.purchase_history') }}">Закрытые покупки</a></p>
+      {% endif %}
       <p class="status">{% if lot.closed %}Закрыта{% else %}Действующая{% endif %}</p>
       <dl class="purchase-fields">
         <dt>ISIN</dt><dd>{{ lot.isin }}</dd>
@@ -51,6 +44,4 @@
           </tbody>
         </table>
       </div>
-    </main>
-  </body>
-</html>
+{% endblock %}

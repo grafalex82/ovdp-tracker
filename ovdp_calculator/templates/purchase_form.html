@@ -1,3 +1,7 @@
+{% extends "base.html" %}
+{% set breadcrumbs = [('Портфель', url_for('index')), ('Добавить облигацию', none)] %}
+{% block title %}Новая покупка — Трекер ОВДП{% endblock %}
+{% block scripts %}<script src="{{ url_for('static', filename='purchase.js') }}" defer></script>{% endblock %}
 {% macro field_error(name) %}
   {% if errors.get(name) %}<p class="error" id="{{ name }}-error">{{ errors[name] }}</p>{% endif %}
 {% endmacro %}
@@ -10,18 +14,7 @@
   {% if show_error %}{{ field_error(name) }}{% endif %}
 {% endmacro %}
 {% set manual = values.get('entry_mode', 'nbu') == 'manual' %}
-<!doctype html>
-<html lang="ru">
-  <head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Новая покупка — Трекер ОВДП</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
-    <script src="{{ url_for('static', filename='purchase.js') }}" defer></script>
-  </head>
-  <body>
-    <main>
-      <nav><a href="{{ url_for('index') }}">Трекер ОВДП</a></nav>
+{% block content %}
       <h1>Новая покупка</h1>
       {% if errors %}<p role="alert" class="error">Please correct the errors below.</p>{% endif %}
       {% if errors.get('form') %}<p role="alert" class="error">{{ errors.form }}</p>{% endif %}
@@ -109,6 +102,4 @@
         <button id="save-purchase" type="submit">Сохранить покупку</button>
       </form>
       <script type="application/json" id="initial-source">{{ source_values|tojson }}</script>
-    </main>
-  </body>
-</html>
+{% endblock %}

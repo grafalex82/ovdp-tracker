@@ -1,25 +1,23 @@
-<!doctype html>
-<html lang="ru">
-  <head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>{% if history %}Закрытые покупки — {% endif %}Трекер ОВДП</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
-  </head>
-  <body>
-    <main class="portfolio">
-      <h1>Трекер ОВДП</h1>
+{% extends "base.html" %}
+{% if history %}{% set breadcrumbs = [('Портфель', url_for('index')), ('Закрытые покупки', none)] %}{% endif %}
+{% block title %}{% if history %}Закрытые покупки — {% endif %}Трекер ОВДП{% endblock %}
+{% block main_class %}portfolio{% endblock %}
+{% block content %}
       <nav aria-label="Список покупок" class="actions">
-        <a href="{{ url_for('index') }}" {% if not history %}aria-current="page"{% endif %}>Действующие покупки</a>
-        <a href="{{ url_for('purchases.purchase_history') }}"
-           {% if history %}aria-current="page"{% endif %}>Закрытые покупки</a>
+        {% if history %}
+        <a href="{{ url_for('index') }}">Действующие покупки</a>
+        <span aria-current="page">Закрытые покупки</span>
+        {% else %}
+        <span aria-current="page">Действующие покупки</span>
+        <a href="{{ url_for('purchases.purchase_history') }}">Закрытые покупки</a>
+        {% endif %}
       </nav>
-      <h2>{% if history %}Закрытые покупки{% else %}Портфель{% endif %}</h2>
+      <h1>{% if history %}Закрытые покупки{% else %}Портфель{% endif %}</h1>
       <p><a class="button" href="{{ url_for('purchases.new_purchase') }}">Добавить облигацию</a></p>
       {% if saved %}<p role="status" class="success">Покупка сохранена.</p>{% endif %}
       {% for group in groups %}
       <section class="issue-group" data-isin="{{ group.isin }}" data-currency="{{ group.currency }}">
-        <h3>{{ group.isin }} <span class="hint">{{ group.currency }}</span></h3>
+        <h2>{{ group.isin }} <span class="hint">{{ group.currency }}</span></h2>
         <div class="table-scroll" role="region" aria-label="Покупки {{ group.isin }}" tabindex="0">
           <table>
             <caption>Покупки {{ group.isin }} · {{ group.currency }}</caption>
@@ -50,6 +48,4 @@
         {% else %}В портфеле пока нет действующих покупок. Добавьте облигацию, чтобы увидеть её здесь.{% endif %}
       </p>
       {% endfor %}
-    </main>
-  </body>
-</html>
+{% endblock %}
