@@ -9,6 +9,7 @@ from itsdangerous import BadSignature
 
 from .db import Database, DatabaseError
 from .money import operation_amount, parse_money
+from .messages import user_message
 from .portfolio import get_lot_details, get_position_details, list_positions
 from .nbu import NbuError, NbuNotFound
 from .sales import SaleValidationError, create_sale
@@ -71,11 +72,11 @@ def new_purchase(database: Database):
             values = _prepare_purchase_values(database, values)
             purchase = create_purchase(database, values, today)
         except PurchaseValidationError as error:
-            errors = error.errors
+            errors = {field: user_message(message) for field, message in error.errors.items()}
             status = 400
         except DatabaseError:
             current_app.logger.exception("Could not save the purchase.")
-            errors["form"] = "Could not save the purchase. No changes were saved; please try again."
+            errors["form"] = "Не удалось сохранить покупку. Изменения не сохранены; повторите попытку."
             status = 503
         else:
             return redirect(url_for("index", saved="1", currency=purchase["currency"]))
@@ -159,19 +160,25 @@ def lookup_issue(database: Database):
         if not local_only:
             remote = validate_imported_issue(current_app.extensions["nbu"].lookup(isin))
     except (NbuError, IssueValidationError) as error:
-        message = str(error)
         if isinstance(error, IssueValidationError):
-            message = f"Unsupported NBU bond data: {error.errors}"
+            details = " ".join(dict.fromkeys(user_message(message) for message in error.errors.values()))
+            message = f"Данные облигации НБУ не поддерживаются. {details}"
+        elif isinstance(error, NbuNotFound):
+            message = "ISIN не найден в справочнике облигаций НБУ."
+        elif str(error).startswith("NBU returned an incomplete or malformed bond record:"):
+            message = "НБУ вернул неполные или некорректные данные облигации."
+        else:
+            message = user_message(str(error))
         if issue is None:
             return jsonify(error=message), 404 if isinstance(error, NbuNotFound) else 502
         remote = None
-        warning = f"{message} Saved issue data is being used."
+        warning = f"{message} Используются сохранённые данные выпуска."
 
     # Return saved values without allowing NBU to rewrite an existing issue or any actual receipts.
     if issue:
         values = issue_form_values(issue, events)
         if remote and issue_signature(remote["issue"], remote["payments"]) != issue_signature(issue, events):
-            warning = "NBU data differs from the saved issue. Shared corrections must be made separately."
+            warning = "Данные НБУ отличаются от сохранённых. Общие реквизиты исправляются отдельно."
         details_url = url_for("purchases.issue_details", isin=issue["isin"])
         if not any(lot["issue_id"] == issue["id"] for lot in database.list_lots()):
             details_url = None
@@ -256,10 +263,10 @@ def new_sale(database: Database, lot_id: int):
         try:
             create_sale(database, lot_id, values, today)
         except SaleValidationError as exception:
-            error, status = str(exception), 400
+            error, status = user_message(str(exception)), 400
         except DatabaseError:
             current_app.logger.exception("Could not save the sale.")
-            error, status = "Could not save the sale. No changes were saved; please try again.", 503
+            error, status = "Не удалось сохранить продажу. Изменения не сохранены; повторите попытку.", 503
         else:
             return redirect(url_for("purchases.purchase_details", lot_id=lot_id))
 

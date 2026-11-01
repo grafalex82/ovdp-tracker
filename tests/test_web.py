@@ -1,6 +1,7 @@
 """Verify explicit database injection and cleanup around HTTP handlers."""
 
 import pytest
+from flask import abort
 
 from ovdp_tracker.db import Database, DatabaseError
 from ovdp_tracker.web import with_database
@@ -84,3 +85,17 @@ def test_handler_failure_closes_database_and_rolls_back_transaction(app, databas
     with pytest.raises(DatabaseError, match="database is closed"):
         received[0].list_banks()
     assert database.list_banks() == []
+
+
+def test_internal_error_page_hides_the_original_description(app):
+    # Trigger an internal HTTP error containing a diagnostic message.
+    @app.get("/test-internal-error")
+    def internal_error():
+        abort(500, description="Internal diagnostic details.")
+
+    # Show a Russian message without exposing the internal description.
+    with app.test_client() as client:
+        response = client.get("/test-internal-error")
+    assert response.status_code == 500
+    assert "Произошла внутренняя ошибка" in response.get_data(as_text=True)
+    assert "Internal diagnostic details" not in response.get_data(as_text=True)

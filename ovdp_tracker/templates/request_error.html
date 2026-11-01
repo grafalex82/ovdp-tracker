@@ -1,0 +1,8 @@
+{% extends "base.html" %}
+{% set breadcrumbs = [('Портфель', url_for('index')), ('Ошибка', none)] %}
+{% block title %}Ошибка — ОВДП Трекер{% endblock %}
+{% block content %}
+      <h1>Не удалось открыть страницу</h1>
+      <p role="alert" class="error">{{ message }}</p>
+      <p><a href="{{ url_for('index') }}">Вернуться в портфель</a></p>
+{% endblock %}

@@ -2,11 +2,12 @@
 
 from secrets import token_hex
 
-from flask import Flask
+from flask import Flask, render_template
 from itsdangerous import URLSafeSerializer
 
 from .db import Database
 from .nbu import NbuClient
+from .messages import user_message
 from .web import purchase_pages, render_portfolio, with_database
 
 
@@ -27,6 +28,14 @@ def create_app(config: dict | None = None) -> Flask:
 
     # Register purchase forms with request-specific storage.
     app.register_blueprint(purchase_pages)
+
+    # Present request errors in Russian while retaining internal exception descriptions.
+    @app.errorhandler(400)
+    @app.errorhandler(404)
+    @app.errorhandler(500)
+    def request_error(error):
+        message = "Произошла внутренняя ошибка. Повторите попытку позже." if error.code == 500 else None
+        return render_template("request_error.html", message=message or user_message(error.description)), error.code
 
     # Register the home page with an explicitly supplied database dependency.
     @app.get("/")

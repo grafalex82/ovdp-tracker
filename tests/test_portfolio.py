@@ -456,7 +456,7 @@ def test_invalid_currency_filter_is_rejected_without_writes(app, database, path)
 
     # Preserve the empty store after the rejected read-only request.
     assert response.status_code == 400
-    assert "Unsupported portfolio currency." in response.get_data(as_text=True)
+    assert "Эта валюта портфеля не поддерживается." in response.get_data(as_text=True)
     assert database.list_lots() == []
 
 
@@ -528,7 +528,7 @@ def test_unknown_purchase_returns_404_without_creating_records(app, database):
 
     # Leave storage untouched by the failed lookup.
     assert response.status_code == 404
-    assert "Purchase not found." in response.get_data(as_text=True)
+    assert "Покупка не найдена." in response.get_data(as_text=True)
     assert get_lot_details(database, 999) is None
     assert list_positions(database) == []
 

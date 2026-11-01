@@ -147,7 +147,7 @@ async function loadIssue() {
   if (!requestedIsin) return;
   if (!manual && !/^[A-Z]{2}[A-Z0-9]{9}[0-9]$/.test(requestedIsin)) {
     status.classList.add("error");
-    status.textContent = "Enter a complete 12-character ISIN, or select manual entry.";
+    status.textContent = "Введите полный ISIN из 12 символов или выберите ручной ввод.";
     return;
   }
 
@@ -164,7 +164,11 @@ async function loadIssue() {
     });
     const data = await response.json();
     if (requestId !== sequence || requestedIsin !== isin.value.trim().toUpperCase()) return;
-    if (!response.ok) throw new Error(data.error || "Could not load issue data.");
+    if (!response.ok) {
+      status.classList.add("error");
+      status.textContent = data.error || "Не удалось загрузить данные выпуска.";
+      return;
+    }
     if (manual && !data.existing) {
       mode.value = "manual";
       status.textContent = "Ручной ввод параметров выпуска.";
@@ -174,7 +178,7 @@ async function loadIssue() {
   } catch (error) {
     if (requestId !== sequence || error.name === "AbortError") return;
     status.classList.add("error");
-    status.textContent = error.message || "Could not load issue data. Retry or select manual entry.";
+    status.textContent = "Не удалось загрузить данные выпуска. Повторите попытку или выберите ручной ввод.";
   } finally {
     if (requestId === sequence) {
       pending = null;

@@ -188,25 +188,28 @@ def test_purchase_and_coupon_boundaries_include_zero_events(app, database, purch
 
 
 @pytest.mark.parametrize("field, value, message", [
-    ("isin", " ", "This field is required."), ("bank_name", " ", "This field is required."),
-    ("currency", "GBP", "Currency must be"),
-    *[("quantity", value, "Quantity must be") for value in ("0", "-1", "1,5", "1.0", "abc", "", "9223372036854775808")],
-    ("nominal", "0", "Amount must be positive"), ("purchase_price", "-1", "Amount must be positive"),
-    ("redemption_amount", "0", "Amount must be positive"),
-    ("purchase_date", "2026-11-01", "planned purchases are not supported"),
-    ("purchase_date", "2025-02-29", "Enter a valid date"), ("purchase_date", "20240215", "Enter a valid date"),
-    ("maturity_date", "2023-01-01", "Maturity date cannot be before"),
-    ("maturity_date", "2027-02-30", "Enter a valid date"),
+    ("isin", " ", "Заполните это поле"), ("bank_name", " ", "Заполните это поле"),
+    ("currency", "GBP", "Выберите валюту"),
+    *[("quantity", value, "Количество должно быть")
+      for value in ("0", "-1", "1,5", "1.0", "abc", "", "9223372036854775808")],
+    ("nominal", "0", "Сумма должна быть больше нуля"), ("purchase_price", "-1", "Сумма должна быть больше нуля"),
+    ("redemption_amount", "0", "Сумма должна быть больше нуля"),
+    ("purchase_date", "2026-11-01", "плановые покупки пока не поддерживаются"),
+    ("purchase_date", "2025-02-29", "Введите корректную дату"),
+    ("purchase_date", "20240215", "Введите корректную дату"),
+    ("maturity_date", "2023-01-01", "Дата погашения не может быть раньше"),
+    ("maturity_date", "2027-02-30", "Введите корректную дату"),
     ("coupons", json.dumps([
         {'date': '2027-06-01', 'amount': '80'},
         {'date': '2027-06-01', 'amount': '85'},
-    ]), "Coupon dates must be unique"),
-    ("coupons", json.dumps([{'date': '2027-06-02', 'amount': '80'}]), "Coupon dates must not be after maturity"),
-    ("coupons", json.dumps([{'date': '2024-02-30', 'amount': '80'}]), "Enter a valid date"),
-    ("coupons", json.dumps([{'date': '2024-08-15', 'amount': '-1'}]), "Amount must be nonnegative"),
-    ("coupons", json.dumps([{"date": "2024-08-15"}]), "Each coupon must contain date and amount strings"),
-    ("nominal_rate", "NaN", "Nominal rate must be"), ("coupon_period", "1.5", "Coupon period must be"),
-    ("issue_mode", "pending", "Load issue data"),
+    ]), "Даты купонов не должны повторяться"),
+    ("coupons", json.dumps([{'date': '2027-06-02', 'amount': '80'}]), "Даты купонов не могут быть позже"),
+    ("coupons", json.dumps([{'date': '2024-02-30', 'amount': '80'}]), "Введите корректную дату"),
+    ("coupons", json.dumps([{'date': '2024-08-15', 'amount': '-1'}]), "Сумма не может быть отрицательной"),
+    ("coupons", json.dumps([{"date": "2024-08-15"}]), "Для каждого купона укажите дату и сумму"),
+    ("nominal_rate", "NaN", "Укажите неотрицательную номинальную ставку"),
+    ("coupon_period", "1.5", "Купонный период должен быть"),
+    ("issue_mode", "pending", "Загрузите данные выпуска"),
 ])
 def test_invalid_purchase_keeps_inputs_and_creates_no_records(app, database, purchase_form, field, value, message):
     purchase_form.update({"maturity_date": "2027-06-01", field: value})
@@ -260,7 +263,7 @@ def test_failed_schedule_write_rolls_back_every_record(app, database, purchase_f
     with app.test_client() as client:
         response = client.post("/purchases/new", data=purchase_form)
     assert response.status_code == 503
-    assert "No changes were saved" in response.get_data(as_text=True)
+    assert "Изменения не сохранены" in response.get_data(as_text=True)
     assert database.list_issues() == database.list_scheduled_payments() == database.list_banks() == []
 
 
@@ -418,7 +421,7 @@ def test_repeat_purchase_rejects_conflicts_before_mode_normalization(
     assert response.status_code == 400
     error_field = "coupons" if field == "redemption_amount" else field
     preview = html.split('<section id="issue-preview"', 1)[1].split("</section>", 1)[0]
-    assert f'id="{error_field}-error"' in preview and "conflict" in preview
+    assert f'id="{error_field}-error"' in preview and "отлича" in preview
     assert '<fieldset id="manual-fields" hidden disabled>' in html
     assert 'id="issue_mode" name="issue_mode" value="existing">' in html
 
@@ -485,5 +488,5 @@ def test_nonexistent_saved_issue_cannot_bypass_explicit_creation_mode(app, datab
     purchase_form["issue_mode"] = "existing"
     with app.test_client() as client:
         response = client.post("/purchases/new", data=purchase_form)
-    assert response.status_code == 400 and "Saved issue not found" in response.get_data(as_text=True)
+    assert response.status_code == 400 and "Сохранённый выпуск не найден" in response.get_data(as_text=True)
     assert database.list_issues() == database.list_lots() == database.list_banks() == []

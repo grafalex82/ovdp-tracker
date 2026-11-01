@@ -61,12 +61,15 @@ def test_backdated_sale_cannot_invalidate_later_sale(app, database, lot):
             "sale_date": "2025-01-01", "quantity": "3", "sale_price": "1050",
         })
     assert response.status_code == 400
-    assert "available quantity" in response.get_data(as_text=True)
+    assert "превышает доступный остаток" in response.get_data(as_text=True)
     assert len(database.list_sales(lot["id"])) == 1
 
 
-@pytest.mark.parametrize("quantity", ["0", "11"])
-def test_invalid_quantities_use_the_same_error_presentation(app, database, lot, quantity):
+@pytest.mark.parametrize("quantity, message", [
+    ("0", "Количество должно быть положительным целым числом."),
+    ("11", "Количество продажи превышает доступный остаток с учётом истории покупки."),
+])
+def test_invalid_quantities_use_the_same_error_presentation(app, database, lot, quantity, message):
     # Disable browser validation so both invalid quantities reach the same error display.
     with app.test_client() as client:
         path = f'/purchases/{lot["id"]}/sales/new'
@@ -77,6 +80,7 @@ def test_invalid_quantities_use_the_same_error_presentation(app, database, lot, 
     html = response.get_data(as_text=True)
     assert response.status_code == 400
     assert '<p role="alert" class="error">' in html
+    assert message in html
     assert f'name="quantity" value="{quantity}"' in html
     assert database.list_sales(lot["id"]) == []
 

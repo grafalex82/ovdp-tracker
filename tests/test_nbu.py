@@ -163,7 +163,7 @@ def test_purchase_lookup_rejects_unsupported_parsed_data_without_partial_import(
     with app.test_client() as client:
         response = client.get("/issues/lookup?isin=UA4000228381")
     assert response.status_code == 502
-    assert "Unsupported NBU bond data" in response.json["error"]
+    assert "Данные облигации НБУ не поддерживаются" in response.json["error"]
     assert "values" not in response.json and "issue_token" not in response.json
     assert database.list_issues() == database.list_scheduled_payments() == []
 
@@ -273,7 +273,7 @@ def test_known_issue_and_actual_receipts_survive_changed_or_unavailable_source(a
     with app.test_client() as client:
         response = client.get("/issues/lookup?isin=UA4000228381")
         assert response.json["existing"] is True
-        assert "differs" in response.json["warning"]
+        assert "отличаются" in response.json["warning"]
         assert response.json["values"]["coupons"][0] == {"date": "2023-11-08", "amount": "95.90"}
         assert response.json["details_url"] == f'/issues/{lot["isin"]}'
     assert database.list_scheduled_payments() == events
@@ -284,7 +284,7 @@ def test_known_issue_and_actual_receipts_survive_changed_or_unavailable_source(a
     with app.test_client() as client:
         response = client.get("/issues/lookup?isin=UA4000228381")
     assert response.status_code == 200 and response.json["existing"] is True
-    assert "Unsupported NBU bond data" in response.json["warning"]
+    assert "Данные облигации НБУ не поддерживаются" in response.json["warning"]
     assert response.json["values"]["coupons"][0] == {"date": "2023-11-08", "amount": "95.90"}
     assert database.list_scheduled_payments() == events
     assert database.list_actual_payments() == [actual]
@@ -451,6 +451,7 @@ def test_signed_draft_conflicting_with_an_issue_saved_after_lookup_is_rejected(
             "issue_token": source["issue_token"], "purchase_date": "2024-01-01", "purchase_price": "999",
             "quantity": "3", "bank_name": "Unsaved bank",
         })
-    assert response.status_code == 400 and "conflicts with the saved ISIN" in response.get_data(as_text=True)
+    assert response.status_code == 400
+    assert "отличаются от сохранённых данных этого ISIN" in response.get_data(as_text=True)
     assert database.list_issues() == [issue] and database.list_scheduled_payments() == events
     assert database.list_lots() == database.list_banks() == []
