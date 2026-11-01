@@ -99,6 +99,18 @@ def test_redemption_blocks_later_sale_but_not_sale_on_same_day(database, lot):
     assert len(database.list_sales(lot["id"])) == 1
 
 
+def test_sale_quantity_limit(database, lot):
+    # Accept the maximum operation size and reject a larger sale without changing history.
+    database.update_lot(lot["id"], purchase_date=lot["purchase_date"], purchase_price=lot["purchase_price"],
+                        quantity=10000, bank_id=lot["bank_id"])
+    values = {"sale_date": "2025-01-01", "quantity": "10001", "sale_price": "1000"}
+    with pytest.raises(SaleValidationError, match="10000"):
+        create_sale(database, lot["id"], values, date(2025, 2, 1))
+    assert database.list_sales(lot["id"]) == []
+    create_sale(database, lot["id"], {**values, "quantity": "10000"}, date(2025, 2, 1))
+    assert database.list_sales(lot["id"])[0]["quantity"] == 10000
+
+
 @pytest.mark.parametrize("closure", ["sale", "redemption"])
 def test_closed_purchase_cannot_open_sale_form(app, database, lot, closure):
     # Close the purchase through a full sale or a confirmed redemption.

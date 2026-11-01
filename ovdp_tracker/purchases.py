@@ -6,6 +6,7 @@ import re
 
 from .db import Database
 from .money import parse_money
+from .quantity import parse_quantity
 
 CURRENCIES = ("UAH", "USD", "EUR")
 ISSUE_FIELDS = (
@@ -241,8 +242,8 @@ def validate_purchase(values: dict, today: date) -> dict:
     """Validate submitted issue and purchase values and return a canonical purchase dictionary.
 
     Pass shared fields from values to validate_issue() and collect its errors alongside
-    purchase errors. Require a nonempty bank name, a positive whole quantity within
-    SQLite's signed integer range, and a positive purchase price with cent precision.
+    purchase errors. Require a nonempty bank name, a supported positive whole quantity,
+    and a positive purchase price with cent precision.
     Require a completed manual, automatic or existing-issue mode; automatic drafts must
     have loaded_isin matching the normalized current identifier.
 
@@ -260,17 +261,14 @@ def validate_purchase(values: dict, today: date) -> dict:
         errors.update(error.errors)
         purchase = {}
 
-    # Require independent purchase values and a positive whole quantity within SQLite's range.
+    # Require independent purchase values and a supported positive whole quantity.
     purchase["bank_name"] = values.get("bank_name", "").strip()
     if not purchase["bank_name"]:
         errors["bank_name"] = "This field is required."
-    quantity = values.get("quantity", "").strip()
-    if not re.fullmatch(r"[0-9]+", quantity) or len(quantity.lstrip("0")) > 19:
-        errors["quantity"] = "Quantity must be a positive integer within the supported range."
-    else:
-        purchase["quantity"] = int(quantity.lstrip("0") or "0")
-        if not 0 < purchase["quantity"] <= 9223372036854775807:
-            errors["quantity"] = "Quantity must be a positive integer within the supported range."
+    try:
+        purchase["quantity"] = parse_quantity(values.get("quantity", ""))
+    except ValueError as error:
+        errors["quantity"] = str(error)
 
     # Reject unfinished or stale automatic drafts while retaining an explicit manual mode.
     mode = values.get("issue_mode", "pending")

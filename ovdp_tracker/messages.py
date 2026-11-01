@@ -1,5 +1,7 @@
 """Translate validation messages at the user interface boundary."""
 
+from .quantity import MAX_BOND_QUANTITY
+
 _MESSAGES = {
     "This field is required.": "Заполните это поле.",
     "Currency must be UAH, USD, or EUR.": "Выберите валюту UAH, USD или EUR.",
@@ -43,6 +45,8 @@ _MESSAGES = {
     "Enter a valid sale date.": "Введите корректную дату продажи.",
     "Sale date cannot be in the future.": "Дата продажи не может быть в будущем.",
     "Quantity must be a positive integer.": "Количество должно быть положительным целым числом.",
+    f"Quantity must not exceed {MAX_BOND_QUANTITY} bonds.":
+        f"Количество должно быть не больше {MAX_BOND_QUANTITY:,} облигаций.".replace(",", " "),
     "Enter a positive sale price with at most two decimal places.":
         "Введите положительную цену с не более чем двумя знаками после разделителя.",
     "Purchase not found.": "Покупка не найдена.",
@@ -50,6 +54,8 @@ _MESSAGES = {
     "Cannot sell bonds after their actual redemption.": "Нельзя продать облигации после фактического погашения.",
     "Sale exceeds the available quantity in the purchase history.":
         "Количество продажи превышает доступный остаток с учётом истории покупки.",
+    "The change conflicts with a confirmed payment.": "Изменение противоречит подтверждённой выплате.",
+    "Shared issue fields cannot be edited here.": "Общие реквизиты выпуска нельзя изменить в этой форме.",
     "Unsupported portfolio currency.": "Эта валюта портфеля не поддерживается.",
     "Position not found.": "Позиция не найдена.",
     "Enter a complete 12-character ISIN.": "Введите полный ISIN из 12 символов.",

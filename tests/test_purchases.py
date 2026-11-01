@@ -46,6 +46,17 @@ def test_form_defaults_do_not_write_data(app, database):
     assert database.list_issues() == database.list_lots() == database.list_banks() == []
 
 
+@pytest.mark.parametrize("quantity, status", [("10000", 302), ("10001", 400), ("9" * 5000, 400)])
+def test_purchase_quantity_limit(app, database, purchase_form, quantity, status):
+    # Validate the boundary through the form without creating records for rejected values.
+    with app.test_client() as client:
+        response = client.post("/purchases/new", data={**purchase_form, "quantity": quantity})
+    assert response.status_code == status
+    assert len(database.list_lots()) == (1 if status == 302 else 0)
+    if status == 400:
+        assert "не больше 10 000 облигаций" in response.get_data(as_text=True)
+
+
 def test_bank_choices_follow_successful_purchases_and_survive_restart(app, app_config, database, purchase_form):
     # Start with an unrestricted bank input and an empty list of saved suggestions.
     with app.test_client() as client:
@@ -191,7 +202,7 @@ def test_purchase_and_coupon_boundaries_include_zero_events(app, database, purch
     ("isin", " ", "Заполните это поле"), ("bank_name", " ", "Заполните это поле"),
     ("currency", "GBP", "Выберите валюту"),
     *[("quantity", value, "Количество должно быть")
-      for value in ("0", "-1", "1,5", "1.0", "abc", "", "9223372036854775808")],
+      for value in ("0", "-1", "1,5", "1.0", "abc", "")],
     ("nominal", "0", "Сумма должна быть больше нуля"), ("purchase_price", "-1", "Сумма должна быть больше нуля"),
     ("redemption_amount", "0", "Сумма должна быть больше нуля"),
     ("purchase_date", "2026-11-01", "плановые покупки пока не поддерживаются"),

@@ -432,3 +432,19 @@ class Database:
 
         # Restrict the result to sales from the requested lot.
         return self._fetch_all("SELECT * FROM sales WHERE lot_id = ? ORDER BY id", (lot_id,))
+
+
+    def update_lot(self, lot_id: int, *, purchase_date: str, purchase_price: str, quantity: int, bank_id: int) -> None:
+        """Update the independent purchase fields for lot_id using an ISO date and exact unit price."""
+        with self._write_scope():
+            self._execute(
+                "UPDATE bond_lots SET purchase_date = ?, purchase_price = ?, quantity = ?, bank_id = ? WHERE id = ?",
+                (purchase_date, str(parse_money(purchase_price)), quantity, bank_id, lot_id),
+            )
+
+
+    def update_sale(self, sale_id: int, *, sale_date: str, sale_price: str, quantity: int) -> None:
+        """Update sale_id with an ISO date, exact unit price and quantity."""
+        with self._write_scope():
+            self._execute("UPDATE sales SET sale_date = ?, sale_price = ?, quantity = ? WHERE id = ?",
+                          (sale_date, str(parse_money(sale_price)), quantity, sale_id))

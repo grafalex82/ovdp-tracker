@@ -12,10 +12,11 @@ from .money import operation_amount, parse_money
 from .messages import user_message
 from .portfolio import get_lot_details, get_position_details, list_positions
 from .nbu import NbuError, NbuNotFound
-from .sales import SaleValidationError, create_sale
+from .quantity import MAX_BOND_QUANTITY
+from .sales import SaleValidationError, check_history, create_sale, validate_sale
 from .purchases import (
     CURRENCIES, IssueValidationError, PurchaseValidationError, create_purchase, issue_form_values, issue_signature,
-    validate_imported_issue, validate_issue,
+    validate_imported_issue, validate_issue, validate_purchase,
 )
 
 purchase_pages = Blueprint("purchases", __name__)
@@ -25,6 +26,12 @@ PREVIEW_FIELDS = (
     ("nominal_rate", "Номинальная ставка, %"), ("coupon_period", "Купонный период, дней"),
     ("bond_type", "Вид облигации"),
 )
+
+
+@purchase_pages.app_context_processor
+def bond_quantity_limit():
+    """Expose the supported per-operation bond quantity limit to templates."""
+    return {"max_bond_quantity": MAX_BOND_QUANTITY}
 
 
 def with_database(view):
@@ -272,3 +279,87 @@ def new_sale(database: Database, lot_id: int):
 
     # Retain entered values and the original form baseline on errors.
     return render_template("sale_form.html", lot=lot, values=values, error=error, today=today.isoformat()), status
+
+
+@purchase_pages.route("/purchases/<int:lot_id>/edit", methods=["GET", "POST"])
+@with_database
+def edit_purchase(database: Database, lot_id: int):
+    """Edit the independent fields of lot_id after atomically checking its history."""
+
+    # Resolve the purchase and initialize its editable values.
+    lot = get_lot_details(database, lot_id)
+    if lot is None:
+        abort(404, description="Purchase not found.")
+    today = date.today()
+    values = {**lot, "bank_name": lot["bank_name"]}
+    error, status = "", 200
+
+    # Validate using saved issue fields and reject attempts to change them through this form.
+    if request.method == "POST":
+        values = request.form.to_dict()
+        try:
+            with database.transaction():
+                current = database.get_lot(lot_id)
+                issue_values = issue_form_values(current, database.list_scheduled_payments(current["issue_id"]))
+                if any(key in values for key in (*issue_values, "issue_id", "isin")):
+                    raise SaleValidationError("Shared issue fields cannot be edited here.")
+                parsed = validate_purchase({**issue_values, **values, "issue_mode": "existing"}, today)
+                check_history(database, {**current, **parsed}, database.list_sales(lot_id))
+                bank = database.add_bank(parsed["bank_name"])
+                database.update_lot(lot_id, purchase_date=parsed["purchase_date"],
+                                    purchase_price=parsed["purchase_price"], quantity=parsed["quantity"],
+                                    bank_id=bank["id"])
+        except PurchaseValidationError as exception:
+            error, status = " ".join(user_message(message) for message in exception.errors.values()), 400
+        except SaleValidationError as exception:
+            error, status = user_message(str(exception)), 400
+        except DatabaseError:
+            current_app.logger.exception("Could not update the purchase.")
+            error, status = "Не удалось сохранить покупку. Изменения не сохранены; повторите попытку.", 503
+        else:
+            return redirect(url_for("purchases.purchase_details", lot_id=lot_id))
+
+    # Render the original values or the rejected submission with shared unsaved-change protection.
+    return render_template("edit_purchase.html", lot=lot, values=values, error=error,
+                           today=today.isoformat(), banks=database.list_banks()), status
+
+
+@purchase_pages.route("/purchases/<int:lot_id>/sales/<int:sale_id>/edit", methods=["GET", "POST"])
+@with_database
+def edit_sale(database: Database, lot_id: int, sale_id: int):
+    """Edit sale_id within lot_id after atomically validating the resulting purchase history."""
+
+    # Require the sale to belong to the selected purchase, including closed purchases.
+    lot = get_lot_details(database, lot_id)
+    if lot is None:
+        abort(404, description="Purchase not found.")
+    sale = next((item for item in lot["sales"] if item["id"] == sale_id), None)
+    if sale is None:
+        abort(404, description="Sale not found.")
+    today = date.today()
+    values, error, status = sale, "", 200
+
+    # Replace only this sale in the history and save after all checks pass.
+    if request.method == "POST":
+        values = request.form.to_dict()
+        try:
+            parsed = validate_sale(values, today)
+            with database.transaction():
+                current = database.get_lot(lot_id)
+                sales = database.list_sales(lot_id)
+                if current is None or not any(item["id"] == sale_id for item in sales):
+                    abort(404, description="Sale not found.")
+                check_history(database, current, [{**item, **parsed} if item["id"] == sale_id else item
+                                                  for item in sales])
+                database.update_sale(sale_id, **parsed)
+        except SaleValidationError as exception:
+            error, status = user_message(str(exception)), 400
+        except DatabaseError:
+            current_app.logger.exception("Could not update the sale.")
+            error, status = "Не удалось сохранить продажу. Изменения не сохранены; повторите попытку.", 503
+        else:
+            return redirect(url_for("purchases.purchase_details", lot_id=lot_id))
+
+    # Reuse the sale form and retain the initial baseline after a rejected submission.
+    return render_template("sale_form.html", lot=lot, values=values, error=error, today=today.isoformat(),
+                           editing=True), status

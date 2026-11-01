@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% set breadcrumbs = [('Портфель', url_for('index')),
+  (lot.isin, url_for('purchases.issue_details', isin=lot.isin)),
+  ('Покупка №' ~ lot.id, url_for('purchases.purchase_details', lot_id=lot.id)), ('Редактирование покупки', none)] %}
+{% block title %}Редактирование покупки №{{ lot.id }} — ОВДП Трекер{% endblock %}
+{% block content %}
+      <h1>Редактирование покупки №{{ lot.id }}</h1>
+      <p>{{ lot.isin }} · Валюта: {{ lot.currency }}</p>
+      {% if error %}<p role="alert" class="error">{{ error }}</p>{% endif %}
+      <form method="post" class="purchase-form" novalidate
+            data-unsaved-form data-unsaved-error="{{ 'true' if error else 'false' }}">
+        {% include 'unsaved_baseline.html' %}
+        <div class="form-panel">
+          <label class="field">Дата покупки
+            <input type="date" name="purchase_date" value="{{ values.get('purchase_date', '') }}" max="{{ today }}" required>
+          </label>
+          <label class="field">Количество облигаций
+            <input type="number" name="quantity" value="{{ values.get('quantity', '') }}"
+                   min="1" max="{{ max_bond_quantity }}" step="1" required>
+            <span class="hint">Не более {{ max_bond_quantity }} облигаций.</span>
+          </label>
+          <label class="field">Цена одной облигации, {{ lot.currency }}
+            <input type="text" name="purchase_price" value="{{ values.get('purchase_price', '') }}" inputmode="decimal" required>
+          </label>
+          <label class="field">Банк
+            <input name="bank_name" value="{{ values.get('bank_name', '') }}" list="banks" required>
+          </label>
+          <datalist id="banks">{% for bank in banks %}<option value="{{ bank.name }}">{% endfor %}</datalist>
+        </div>
+        <div class="form-actions">
+          <button type="submit" class="primary">Сохранить</button>
+          <a href="{{ url_for('purchases.purchase_details', lot_id=lot.id) }}">Отмена</a>
+        </div>
+      </form>
+{% endblock %}

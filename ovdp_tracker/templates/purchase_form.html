@@ -134,6 +134,7 @@
             {{ field('purchase_date', 'Дата покупки', 'date') }}
             {{ field('purchase_price', 'Цена одной облигации', inputmode='decimal') }}
             {{ field('quantity', 'Количество облигаций', inputmode='numeric') }}
+            <p class="hint">Не более {{ max_bond_quantity }} облигаций в одной покупке.</p>
             {{ field('bank_name', 'Банк', list_id='bank-options') }}
           </div>
           <datalist id="bank-options">

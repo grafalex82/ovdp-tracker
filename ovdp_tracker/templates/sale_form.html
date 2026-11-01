@@ -1,10 +1,11 @@
 {% extends "base.html" %}
 {% set breadcrumbs = [('Портфель', url_for('index')),
   (lot.isin, url_for('purchases.issue_details', isin=lot.isin)),
-  ('Покупка №' ~ lot.id, url_for('purchases.purchase_details', lot_id=lot.id)), ('Продажа', none)] %}
+  ('Покупка №' ~ lot.id, url_for('purchases.purchase_details', lot_id=lot.id)),
+  ('Редактирование продажи' if editing else 'Продажа', none)] %}
 {% block title %}Продажа — покупка №{{ lot.id }} — ОВДП Трекер{% endblock %}
 {% block content %}
-      <h1>Продажа из покупки №{{ lot.id }}</h1>
+      <h1>{{ 'Редактирование продажи' if editing else 'Продажа' }} из покупки №{{ lot.id }}</h1>
       <p>{{ lot.isin }} · Сейчас осталось: {{ lot.remaining_quantity }} · Валюта: {{ lot.currency }}</p>
       {% if error %}<p role="alert" class="error">{{ error }}</p>{% endif %}
       <form method="post" class="purchase-form" novalidate
@@ -15,14 +16,16 @@
             <input type="date" name="sale_date" value="{{ values.get('sale_date', '') }}" max="{{ today }}" required>
           </label>
           <label class="field">Количество облигаций
-            <input type="number" name="quantity" value="{{ values.get('quantity', '') }}" min="1" step="1" required>
+            <input type="number" name="quantity" value="{{ values.get('quantity', '') }}"
+                   min="1" max="{{ max_bond_quantity }}" step="1" required>
+            <span class="hint">Не более {{ max_bond_quantity }} облигаций.</span>
           </label>
           <label class="field">Цена одной облигации, {{ lot.currency }}
             <input type="text" name="sale_price" value="{{ values.get('sale_price', '') }}" inputmode="decimal" required>
           </label>
         </div>
         <div class="form-actions">
-          <button type="submit" class="primary">Продать</button>
+          <button type="submit" class="primary">{{ 'Сохранить' if editing else 'Продать' }}</button>
           <a href="{{ url_for('purchases.purchase_details', lot_id=lot.id) }}">Отмена</a>
         </div>
       </form>
