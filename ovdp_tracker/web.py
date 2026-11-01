@@ -11,6 +11,7 @@ from .db import Database, DatabaseError
 from .money import operation_amount, parse_money
 from .portfolio import get_lot_details, get_position_details, list_positions
 from .nbu import NbuError, NbuNotFound
+from .sales import SaleValidationError, create_sale
 from .purchases import (
     CURRENCIES, IssueValidationError, PurchaseValidationError, create_purchase, issue_form_values, issue_signature,
     validate_imported_issue, validate_issue,
@@ -231,3 +232,36 @@ def purchase_details(database: Database, lot_id: int):
 
     # Present the same stored fields and current state as the portfolio list.
     return render_template("purchase_details.html", lot=lot)
+
+
+@purchase_pages.route("/purchases/<int:lot_id>/sales/new", methods=["GET", "POST"])
+@with_database
+def new_sale(database: Database, lot_id: int):
+    """Render or save a sale for the selected lot_id, preserving invalid inputs."""
+
+    # Resolve the purchase before showing or processing its sale form.
+    lot = get_lot_details(database, lot_id)
+    if lot is None:
+        abort(404, description="Purchase not found.")
+    if lot["remaining_quantity"] <= 0:
+        return redirect(url_for("purchases.purchase_details", lot_id=lot_id))
+    today = date.today()
+    values = {"sale_date": today.isoformat(), "quantity": "", "sale_price": ""}
+    error = ""
+    status = 200
+
+    # Validate the operation and redirect after the transaction commits.
+    if request.method == "POST":
+        values = request.form.to_dict()
+        try:
+            create_sale(database, lot_id, values, today)
+        except SaleValidationError as exception:
+            error, status = str(exception), 400
+        except DatabaseError:
+            current_app.logger.exception("Could not save the sale.")
+            error, status = "Could not save the sale. No changes were saved; please try again.", 503
+        else:
+            return redirect(url_for("purchases.purchase_details", lot_id=lot_id))
+
+    # Retain entered values and the original form baseline on errors.
+    return render_template("sale_form.html", lot=lot, values=values, error=error, today=today.isoformat()), status

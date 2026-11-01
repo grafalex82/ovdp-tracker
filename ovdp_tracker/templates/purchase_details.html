@@ -30,6 +30,24 @@
           <dd>{{ lot.schedule|selectattr('kind', 'equalto', 'coupon')|list|length }}</dd></div>
         <div><dt>Дата погашения</dt><dd>{{ lot.maturity_date }}</dd></div>
       </dl>
+      <h2>Продажи</h2>
+      {% if lot.remaining_quantity > 0 %}
+      <p><a class="button" href="{{ url_for('purchases.new_sale', lot_id=lot.id) }}">Добавить продажу</a></p>
+      {% else %}
+      <p class="hint">В этой покупке не осталось облигаций для продажи.</p>
+      {% endif %}
+      <div class="table-scroll" role="region" aria-label="Продажи покупки" tabindex="0">
+        <table>
+          <thead><tr><th scope="col">Дата</th><th scope="col">Количество</th>
+            <th scope="col">Цена за облигацию</th><th scope="col">Выручка</th></tr></thead>
+          <tbody>
+            {% for sale in lot.sales %}
+            <tr><td>{{ sale.sale_date }}</td><td>{{ sale.quantity }}</td>
+              <td>{{ sale.sale_price|money }} {{ lot.currency }}</td><td>{{ sale.total|money }} {{ lot.currency }}</td></tr>
+            {% else %}<tr><td colspan="4">Продаж пока нет.</td></tr>{% endfor %}
+          </tbody>
+        </table>
+      </div>
       <h2>Общий календарь выпуска</h2>
       <p class="hint">Календарь един для всех покупок этого ISIN и включает сохранённые даты до покупки.
         Плановая дата сама по себе не подтверждает получение денег.</p>

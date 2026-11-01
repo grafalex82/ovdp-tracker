@@ -31,6 +31,10 @@ def _describe_lot(database: Database, lot: dict, today: date, schedule: list[dic
         **lot, "bank_name": bank["name"], "schedule": schedule, "remaining_quantity": remaining,
         "closed": remaining == 0, "payments": _describe_payments(lot, schedule, sales, actuals),
         "purchase_total": str(operation_amount(parse_money(lot["purchase_price"]), lot["quantity"])),
+        "sales": [
+            {**sale, "total": str(operation_amount(parse_money(sale["sale_price"]), sale["quantity"]))}
+            for sale in sorted(sales, key=lambda item: (item["sale_date"], item["id"]))
+        ],
     }
 
 
