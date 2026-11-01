@@ -4,11 +4,16 @@
   ('Покупка №' ~ lot.id, url_for('purchases.purchase_details', lot_id=lot.id)),
   ('Редактирование продажи' if editing else 'Продажа', none)] %}
 {% block title %}Продажа — покупка №{{ lot.id }} — ОВДП Трекер{% endblock %}
+{% block scripts %}
+  {% if editing %}<script src="{{ url_for('static', filename='sale.js') }}" defer></script>{% endif %}
+{% endblock %}
 {% block content %}
       <h1>{{ 'Редактирование продажи' if editing else 'Продажа' }} из покупки №{{ lot.id }}</h1>
       <p>{{ lot.isin }} · Сейчас осталось: {{ lot.remaining_quantity }} · Валюта: {{ lot.currency }}</p>
       {% if error %}<p role="alert" class="error">{{ error }}</p>{% endif %}
-      <form method="post" class="purchase-form" novalidate
+      <form id="sale-form" method="post" class="purchase-form" novalidate
+            action="{{ url_for('purchases.edit_sale', lot_id=lot.id, sale_id=sale.id) if editing
+              else url_for('purchases.new_sale', lot_id=lot.id) }}"
             data-unsaved-form data-unsaved-error="{{ 'true' if error else 'false' }}">
         {% include 'unsaved_baseline.html' %}
         <div class="form-panel">
@@ -21,7 +26,8 @@
             <span class="hint">Не более {{ max_bond_quantity }} облигаций.</span>
           </label>
           <label class="field">Цена одной облигации, {{ lot.currency }}
-            <input type="text" name="sale_price" value="{{ values.get('sale_price', '') }}" inputmode="decimal" required>
+            <input type="text" name="sale_price" value="{{ values.get('sale_price', '') }}"
+                   inputmode="decimal" required>
           </label>
         </div>
         <div class="form-actions">
@@ -29,4 +35,33 @@
           <a href="{{ url_for('purchases.purchase_details', lot_id=lot.id) }}">Отмена</a>
         </div>
       </form>
+      {% if editing %}
+      <h2>Аварийное удаление продажи</h2>
+      <p class="hint">Для удаления ошибочной записи потребуется отдельное подтверждение.
+        Несохранённые правки продажи не применяются.</p>
+      <button type="button" id="delete-sale-open" class="danger" hidden>Удалить продажу</button>
+      <noscript><p class="hint">Для подтверждения удаления включите JavaScript.</p></noscript>
+      <dialog id="delete-sale-dialog" aria-labelledby="delete-sale-title" aria-describedby="delete-sale-warning">
+        <h2 id="delete-sale-title">Удалить сохранённую продажу?</h2>
+        <dl class="purchase-fields">
+          <div><dt>ISIN</dt><dd>{{ lot.isin }}</dd></div>
+          <div><dt>Покупка</dt><dd>№{{ lot.id }} от {{ lot.purchase_date }}</dd></div>
+          <div><dt>Дата продажи</dt><dd>{{ sale.sale_date }}</dd></div>
+          <div><dt>Количество</dt><dd>{{ sale.quantity }}</dd></div>
+          <div><dt>Цена одной облигации</dt><dd>{{ sale.sale_price|money }} {{ lot.currency }}</dd></div>
+          <div><dt>Выручка</dt><dd>{{ sale.total|money }} {{ lot.currency }}</dd></div>
+        </dl>
+        <p id="delete-sale-warning">Удаление необратимо: будет удалена только эта сохранённая продажа.
+          Остаток и неподтверждённые выплаты пересчитаются. Подтверждённые выплаты сохранят свои суммы и даты
+          без ожидания доплаты; фактическое погашение продолжит закрывать покупку.</p>
+        <p>Покупка, другие продажи, выпуски, календарь и банки сохранятся.
+          Несохранённые правки не будут применены. Восстановить продажу в приложении нельзя.</p>
+        <div class="dialog-actions">
+          <button type="button" id="delete-sale-cancel" autofocus>Отмена</button>
+          <button type="submit" form="sale-form" name="confirm" value="delete" class="danger"
+            formaction="{{ url_for('purchases.delete_sale', lot_id=lot.id, sale_id=sale.id) }}"
+            formnovalidate>Удалить сохранённую продажу</button>
+        </div>
+      </dialog>
+      {% endif %}
 {% endblock %}

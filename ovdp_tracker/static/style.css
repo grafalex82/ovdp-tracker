@@ -285,7 +285,7 @@ tbody tr:hover { background: var(--row-hover); }
 .coupon-row label { display: grid; flex: 1 1 160px; gap: 7px; min-width: 0; }
 .coupon-row button { color: var(--muted); }
 [data-coupon-editor] .hint { margin-top: 12px; }
-#unsaved-dialog {
+#unsaved-dialog, #delete-sale-dialog {
   width: min(448px, calc(100% - 32px));
   max-width: calc(100% - 32px);
   padding: 24px;
@@ -295,7 +295,8 @@ tbody tr:hover { background: var(--row-hover); }
   background: var(--surface);
 }
 
-#unsaved-dialog::backdrop { background: rgb(20 28 42 / 40%); }
+#delete-sale-dialog { width: min(760px, calc(100% - 32px)); max-height: calc(100% - 32px); overflow-y: auto; }
+#unsaved-dialog::backdrop, #delete-sale-dialog::backdrop { background: rgb(20 28 42 / 40%); }
 [hidden] { display: none !important; }
 
 @media (max-width: 760px) {

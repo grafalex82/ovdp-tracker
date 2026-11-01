@@ -7,6 +7,9 @@
         <div><h1>Покупка №{{ lot.id }}</h1><p class="subtitle">{{ lot.isin }}</p></div>
         <p class="status">{% if lot.closed %}Закрыта{% else %}Действующая{% endif %}</p>
       </div>
+      {% if request.args.get('sale_deleted') == '1' %}
+      <p role="status" class="success">Продажа удалена. Остаток и ожидаемые выплаты пересчитаны.</p>
+      {% endif %}
       {% if lot.closed %}
       <p><a href="{{ url_for('purchases.issue_details', isin=lot.isin) }}">Все покупки {{ lot.isin }}</a></p>
       {% endif %}

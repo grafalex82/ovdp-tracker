@@ -395,4 +395,45 @@ def edit_sale(database: Database, lot_id: int, sale_id: int):
 
     # Reuse the sale form and retain the initial baseline after a rejected submission.
     return render_template("sale_form.html", lot=lot, values=values, error=error, today=today.isoformat(),
-                           editing=True), status
+                           editing=True, sale=sale), status
+
+
+@purchase_pages.post("/purchases/<int:lot_id>/sales/<int:sale_id>/delete")
+@with_database
+def delete_sale(database: Database, lot_id: int, sale_id: int):
+    """Delete the confirmed sale_id from lot_id after atomically validating ownership and the remaining history."""
+
+    # Resolve saved details for confirmation errors without applying any submitted draft fields.
+    lot = get_lot_details(database, lot_id)
+    if lot is None:
+        abort(404, description="Purchase not found.")
+    sale = next((item for item in lot["sales"] if item["id"] == sale_id), None)
+    if sale is None:
+        abort(404, description="Sale not found.")
+    error, status = "", 200
+
+    # Recheck ownership and history under the write lock before deleting the one selected sale.
+    try:
+        if request.form.get("confirm") != "delete":
+            raise SaleValidationError("Confirm deletion of the saved sale.")
+        with database.transaction():
+            current = database.get_lot(lot_id)
+            sales = database.list_sales(lot_id)
+            if current is None or not any(item["id"] == sale_id for item in sales):
+                abort(404, description="Sale not found.")
+            check_history(database, current, [item for item in sales if item["id"] != sale_id])
+            if not database.delete_sale(sale_id, lot_id=lot_id):
+                abort(404, description="Sale not found.")
+    except SaleValidationError as exception:
+        error, status = user_message(str(exception)), 400
+    except DatabaseError:
+        current_app.logger.exception("Could not delete the sale.")
+        error, status = user_message("Could not delete the sale. Retry the operation."), 503
+    else:
+        return redirect(url_for("purchases.purchase_details", lot_id=lot_id, sale_deleted="1"))
+
+    # Preserve the editor's draft and its original unsaved-change baseline on any rejected deletion.
+    return render_template(
+        "sale_form.html", lot=lot, sale=sale, values={**sale, **request.form.to_dict()}, error=error,
+        today=date.today().isoformat(), editing=True,
+    ), status

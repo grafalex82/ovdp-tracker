@@ -434,6 +434,12 @@ class Database:
         return self._fetch_all("SELECT * FROM sales WHERE lot_id = ? ORDER BY id", (lot_id,))
 
 
+    def delete_sale(self, sale_id: int, *, lot_id: int) -> bool:
+        """Delete sale_id only when it belongs to lot_id; return True if removed or False if absent or foreign."""
+        with self._write_scope():
+            return self._execute("DELETE FROM sales WHERE id = ? AND lot_id = ?", (sale_id, lot_id)).rowcount > 0
+
+
     def update_lot(self, lot_id: int, *, purchase_date: str, purchase_price: str, quantity: int, bank_id: int) -> None:
         """Update the independent purchase fields for lot_id using an ISO date and exact unit price."""
         with self._write_scope():

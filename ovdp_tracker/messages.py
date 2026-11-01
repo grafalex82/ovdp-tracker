@@ -50,6 +50,10 @@ _MESSAGES = {
     "Enter a positive sale price with at most two decimal places.":
         "Введите положительную цену с не более чем двумя знаками после разделителя.",
     "Purchase not found.": "Покупка не найдена.",
+    "Sale not found.": "Продажа не найдена.",
+    "Confirm deletion of the saved sale.": "Подтвердите удаление сохранённой продажи.",
+    "Could not delete the sale. Retry the operation.":
+        "Не удалось удалить продажу. Изменения не сохранены; повторите попытку.",
     "Confirm deletion of the complete purchase history.": "Подтвердите удаление всей истории покупки.",
     "Could not delete the purchase. Retry the operation.":
         "Не удалось удалить покупку. Изменения не сохранены; повторите попытку.",
