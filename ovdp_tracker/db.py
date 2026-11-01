@@ -336,6 +336,43 @@ class Database:
         return self._fetch_all("SELECT * FROM bond_issues ORDER BY id")
 
 
+    def update_issue(
+        self, issue_id: int, *, nominal: str, currency: str, maturity_date: str, issue_date: str,
+        nominal_rate: str, coupon_period: int | None, bond_type: str, payments: list[dict],
+    ) -> None:
+        """Save metadata and the complete calendar for issue_id atomically, preserving its ISIN.
+
+        Receive ISO dates and exact unit amounts in payments. Retain event IDs for matching
+        kind/date pairs, update their amounts and remove omitted events. Referenced events
+        cannot be removed. Purchase history validation belongs to the caller's transaction.
+        """
+
+        # Normalize exact amounts before changing any persisted fields.
+        nominal = str(parse_money(nominal))
+        payments = [{**event, "amount": str(parse_money(event["amount"]))} for event in payments]
+        keys = {(event["kind"], event["planned_date"]) for event in payments}
+
+        # Reconcile the calendar in place so existing confirmations keep their event identities.
+        with self._write_scope():
+            existing = {(event["kind"], event["planned_date"]): event
+                        for event in self.list_scheduled_payments(issue_id)}
+            self._execute(
+                "UPDATE bond_issues SET nominal = ?, currency = ?, maturity_date = ?, issue_date = ?, "
+                "nominal_rate = ?, coupon_period = ?, bond_type = ? WHERE id = ?",
+                (nominal, currency, maturity_date, issue_date, nominal_rate, coupon_period, bond_type, issue_id),
+            )
+            for key, event in existing.items():
+                if key not in keys:
+                    self._execute("DELETE FROM scheduled_payments WHERE id = ?", (event["id"],))
+            for event in payments:
+                saved = existing.get((event["kind"], event["planned_date"]))
+                if saved:
+                    self._execute("UPDATE scheduled_payments SET amount = ? WHERE id = ?",
+                                  (event["amount"], saved["id"]))
+                else:
+                    self.add_scheduled_payment(issue_id=issue_id, **event)
+
+
     def add_lot(self, *, issue_id: int, purchase_date: str, purchase_price: str, quantity: int, bank_id: int) -> dict:
         """Store issue ID, ISO purchase date, exact unit price, quantity and bank; return the lot with issue fields."""
         with self._write_scope():

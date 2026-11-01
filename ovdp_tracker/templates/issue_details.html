@@ -7,6 +7,8 @@
         <h1>{{ position.isin }}</h1>
         <p class="status">{% if position.closed %}Закрытая позиция{% else %}Действующая позиция{% endif %}</p>
       </div>
+      <p><a class="button" href="{{ url_for('purchases.edit_issue', isin=position.isin) }}">
+        Редактировать облигацию</a></p>
       <p><a href="{{ url_for('index', currency=position.currency) }}">Портфель в {{ position.currency }}</a>
         {% if position.closed %}
         · <a href="{{ url_for('purchases.purchase_history', currency=position.currency) }}">Закрытые позиции</a>

@@ -8,6 +8,7 @@ from flask import Blueprint, abort, current_app, jsonify, redirect, render_templ
 from itsdangerous import BadSignature
 
 from .db import Database, DatabaseError
+from .issues import edit_issue as save_issue_correction
 from .money import operation_amount, parse_money
 from .messages import user_message
 from .portfolio import get_lot_details, get_position_details, list_positions
@@ -217,7 +218,7 @@ def render_portfolio(database: Database, *, closed: bool = False):
     return render_template(
         "index.html", positions=list_positions(database, currency=currency, closed=closed), history=closed,
         currency=currency, currencies=CURRENCIES, saved=request.args.get("saved") == "1" and not closed,
-        deleted=request.args.get("deleted") == "1",
+        deleted=request.args.get("deleted") == "1", issue_saved=request.args.get("issue_saved") == "1",
     )
 
 
@@ -233,6 +234,42 @@ def issue_details(database: Database, isin: str):
 
     # Show the complete calendar and both active and closed purchases in their canonical parent page.
     return render_template("issue_details.html", position=position)
+
+
+@purchase_pages.route("/issues/<isin>/edit", methods=["GET", "POST"])
+@with_database
+def edit_issue(database: Database, isin: str):
+    """Render or save an explicit shared correction for isin, preserving rejected form values."""
+
+    # Resolve a portfolio position and seed the editor from its complete saved calendar.
+    position = get_position_details(database, isin)
+    if position is None:
+        abort(404, description="Position not found.")
+    values = issue_form_values(position, position["schedule"])
+    errors, status = {}, 200
+
+    # Retain all raw inputs and the original dirty-form baseline when any validation or write fails.
+    if request.method == "POST":
+        values = request.form.to_dict()
+        values.setdefault("isin", position["isin"])
+        try:
+            try:
+                values["coupons"] = json.loads(values.get("coupons", "[]"))
+            except (ValueError, RecursionError) as error:
+                raise IssueValidationError({"coupons": "Enter a valid JSON coupon array."}) from error
+            issue = save_issue_correction(database, position["id"], values)
+        except IssueValidationError as error:
+            errors = {field: user_message(message) for field, message in error.errors.items()}
+            status = 400
+        except DatabaseError:
+            current_app.logger.exception("Could not update the shared issue.")
+            errors["form"], status = user_message("Could not update the issue. Retry the operation."), 503
+        else:
+            return redirect(url_for("index", issue_saved="1", currency=issue["currency"]))
+
+    # Share the calendar editor, navigation and unsaved-change protection with the other forms.
+    return render_template("edit_issue.html", position=position, values=values, errors=errors,
+                           currencies=CURRENCIES), status
 
 
 @purchase_pages.get("/purchases/<int:lot_id>")

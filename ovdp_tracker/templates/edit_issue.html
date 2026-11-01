@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+{% set breadcrumbs = [('Портфель', url_for('index', currency=position.currency)),
+  (position.isin, url_for('purchases.issue_details', isin=position.isin)), ('Редактирование облигации', none)] %}
+{% block title %}Редактирование {{ position.isin }} — ОВДП Трекер{% endblock %}
+{% block scripts %}
+<script src="{{ url_for('static', filename='coupon-calendar.js') }}" defer></script>
+<script src="{{ url_for('static', filename='issue.js') }}" defer></script>
+{% endblock %}
+{% macro field_error(name) %}
+  {% if errors.get(name) %}<p class="error" id="{{ name }}-error">{{ errors[name] }}</p>{% endif %}
+{% endmacro %}
+{% macro field(name, label, type='text', required=false, inputmode=none) %}
+  <div class="field">
+    <label for="{{ name }}">{{ label }}</label>
+    <input id="{{ name }}" name="{{ name }}" type="{{ type }}" value="{{ values.get(name, '') }}"
+           {% if required %}required{% endif %} {% if inputmode %}inputmode="{{ inputmode }}"{% endif %}
+           {% if errors.get(name) %}aria-invalid="true" aria-describedby="{{ name }}-error"{% endif %}>
+    {{ field_error(name) }}
+  </div>
+{% endmacro %}
+{% block content %}
+      <h1>Редактирование облигации</h1>
+      <p>{{ position.isin }} · Общие реквизиты всех покупок этого ISIN.</p>
+      <p class="hint">Изменения пересчитают неподтверждённые ожидания всех покупок.
+        Фактические даты и суммы поступлений сохраняются. Дату события с фактом нельзя удалить или перенести.</p>
+      {% if errors %}<p role="alert" class="error">Исправьте ошибки, указанные ниже.</p>{% endif %}
+      {{ field_error('form') }}{{ field_error('isin') }}
+      <form method="post" class="purchase-form" novalidate
+            data-unsaved-form data-unsaved-error="{{ 'true' if errors else 'false' }}">
+        {% include 'unsaved_baseline.html' %}
+        <fieldset class="form-panel">
+          <legend>Общие параметры выпуска</legend>
+          {{ field('nominal', 'Номинал одной облигации', required=true, inputmode='decimal') }}
+          <div class="field">
+            <label for="currency">Валюта выпуска</label>
+            <select id="currency" name="currency" required>
+              {% for currency in currencies %}
+              <option value="{{ currency }}" {% if values.get('currency') == currency %}selected{% endif %}>
+                {{ currency }}</option>
+              {% endfor %}
+            </select>
+            {{ field_error('currency') }}
+          </div>
+          {{ field('issue_date', 'Дата выпуска', 'date') }}
+          {{ field('nominal_rate', 'Номинальная ставка, % годовых', inputmode='decimal') }}
+          {{ field('coupon_period', 'Купонный период, дней', inputmode='numeric') }}
+          {{ field('bond_type', 'Вид облигации') }}
+        </fieldset>
+        <fieldset class="form-panel">
+          <legend>Общий календарь выпуска</legend>
+          {% include '_coupon_editor.html' %}
+          {{ field('maturity_date', 'Дата погашения', 'date', required=true) }}
+          {{ field('redemption_amount', 'Сумма погашения на одну облигацию', required=true, inputmode='decimal') }}
+          <p class="hint">Дата и сумма погашения задаются отдельно и не меняются при правке купонов.
+            Все суммы указаны в выбранной валюте выпуска.</p>
+        </fieldset>
+        <div class="form-actions">
+          <button type="submit" class="primary">Сохранить облигацию</button>
+          <a href="{{ url_for('purchases.issue_details', isin=position.isin) }}">Отмена</a>
+        </div>
+      </form>
+{% endblock %}

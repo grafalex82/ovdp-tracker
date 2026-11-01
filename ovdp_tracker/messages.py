@@ -3,6 +3,11 @@
 from .quantity import MAX_BOND_QUANTITY
 
 _MESSAGES = {
+    "The saved ISIN cannot be changed.": "ISIN сохранённого выпуска нельзя изменить.",
+    "Cannot remove an event with a confirmed payment.":
+        "Нельзя удалить или перенести дату события с подтверждённой выплатой любой покупки этого ISIN.",
+    "Could not update the issue. Retry the operation.":
+        "Не удалось сохранить облигацию. Изменения не сохранены; повторите попытку.",
     "This field is required.": "Заполните это поле.",
     "Currency must be UAH, USD, or EUR.": "Выберите валюту UAH, USD или EUR.",
     "Amount must be positive.": "Сумма должна быть больше нуля.",

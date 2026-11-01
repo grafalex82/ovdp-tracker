@@ -63,6 +63,10 @@ def test_purchase_breadcrumbs_ignore_referrer_and_history_state(app, database, l
 
 
 def test_visible_page_links_resolve_without_writing_data(app, database, lot):
+    # Supply the complete issue calendar required by the shared correction form.
+    event = database.add_scheduled_payment(issue_id=lot["issue_id"], kind="redemption",
+                                           planned_date=lot["maturity_date"], amount=lot["nominal"])
+
     # Follow every rendered link on the currently available screens, including their parent links.
     before = database.list_lots()
     with app.test_client() as client:
@@ -74,7 +78,7 @@ def test_visible_page_links_resolve_without_writing_data(app, database, lot):
 
     # Navigation must not add or alter purchases, shared calendars or operations.
     assert database.list_lots() == before
-    assert database.list_scheduled_payments() == []
+    assert database.list_scheduled_payments() == [event]
     assert database.list_actual_payments() == []
     assert database.list_sales() == []
 
