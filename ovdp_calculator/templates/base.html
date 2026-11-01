@@ -6,6 +6,7 @@
     <title>{% block title %}Трекер ОВДП{% endblock %}</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
     {% block scripts %}{% endblock %}
+    <script src="{{ url_for('static', filename='unsaved-form.js') }}" defer></script>
   </head>
   <body>
     <main class="{% block main_class %}{% endblock %}">
@@ -31,5 +32,13 @@
       </nav>
       {% block content %}{% endblock %}
     </main>
+    <dialog id="unsaved-dialog" aria-labelledby="unsaved-title" aria-describedby="unsaved-description">
+      <h2 id="unsaved-title">Есть несохранённые изменения</h2>
+      <p id="unsaved-description">При выходе введённые изменения будут потеряны.</p>
+      <div class="dialog-actions">
+        <button type="button" id="unsaved-stay" autofocus>Остаться</button>
+        <button type="button" id="unsaved-leave">Выйти без сохранения</button>
+      </div>
+    </dialog>
   </body>
 </html>

@@ -284,3 +284,20 @@ button:disabled {
 #issue-preview h2 {
   margin-top: 0;
 }
+
+#unsaved-dialog {
+  max-width: min(28rem, calc(100% - 2rem));
+  padding: 1.5rem;
+  border: 1px solid #9ca3af;
+  border-radius: 0.5rem;
+}
+
+#unsaved-dialog::backdrop {
+  background: rgb(0 0 0 / 40%);
+}
+
+.dialog-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}

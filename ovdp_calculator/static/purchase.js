@@ -18,8 +18,6 @@ let sourceToken = issueToken.value;
 let sequence = 0;
 let pending = null;
 let timer = null;
-let dirty = Boolean(document.querySelector(".error"));
-let submitting = false;
 
 // Read the explicit mode selector without changing either mode's draft.
 function manualSelected() {
@@ -92,6 +90,18 @@ function updateMode() {
   save.disabled = mode.value === "pending";
   renderPreview();
   updateCalendar();
+  document.getElementById("source-snapshot").value = snapshotSource();
+}
+
+
+// Compare only issue data so response metadata, signatures and purchase inputs do not alter the source snapshot.
+function snapshotSource() {
+  if (!sourceIsin) return "{}";
+  const fields = [
+    "isin", "nominal", "currency", "issue_date", "maturity_date", "nominal_rate", "coupon_period", "bond_type",
+    "coupon_schedule", "redemption_amount",
+  ];
+  return JSON.stringify(fields.map(name => [name, sourceValues[name] || ""]));
 }
 
 
@@ -124,7 +134,6 @@ function applySource(data, requestedIsin) {
     link.textContent = "Сохранённые общие реквизиты и календарь выпуска";
     details.append(link);
   }
-  dirty = true;
 }
 
 
@@ -203,19 +212,43 @@ function changeEntryMode() {
   } else if (!hasSource && isin.value.trim()) {
     timer = setTimeout(loadIssue, 300);
   }
-  dirty = true;
   updateMode();
+}
+
+
+// Retain disabled manual fields across submission errors without submitting them as shared issue overrides.
+function preserveManualDraft() {
+  const draft = {};
+  for (const element of manualFields.querySelectorAll("input, select, textarea")) {
+    draft[element.name] = element.value;
+  }
+  document.getElementById("manual-draft").value = JSON.stringify(draft);
+}
+
+
+// Restore the independent manual draft after the server has rendered a rejected submission.
+function restoreManualDraft() {
+  // Ignore absent or malformed client metadata without changing server-validated source values.
+  const field = document.getElementById("manual-draft");
+  if (!field.value) return;
+  let draft;
+  try {
+    draft = JSON.parse(field.value);
+  } catch {
+    return;
+  }
+  if (!draft || typeof draft !== "object") return;
+
+  // Restore only the actual manual controls, including values hidden in NBU or existing-issue mode.
+  for (const element of manualFields.querySelectorAll("input, select, textarea")) {
+    if (typeof draft[element.name] === "string") element.value = draft[element.name];
+  }
 }
 
 isin.addEventListener("input", changeIsin);
 schedule.addEventListener("input", updateCalendar);
 for (const radio of form.querySelectorAll('[name="entry_mode"]')) radio.addEventListener("change", changeEntryMode);
 document.getElementById("lookup-retry").addEventListener("click", loadIssue);
-form.addEventListener("input", () => { dirty = true; });
-form.addEventListener("submit", () => { submitting = true; });
-window.addEventListener("beforeunload", event => {
-  if (!dirty || submitting) return;
-  event.preventDefault();
-  event.returnValue = "";
-});
+form.addEventListener("submit", preserveManualDraft);
+restoreManualDraft();
 updateMode();
