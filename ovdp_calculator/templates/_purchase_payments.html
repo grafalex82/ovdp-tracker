@@ -2,16 +2,17 @@
         <table>
           <caption>План и факт покупки №{{ lot.id }} · {{ lot.currency }}</caption>
           <thead><tr><th scope="col">Плановая дата</th><th scope="col">Выплата</th>
-            <th scope="col">Количество</th><th scope="col">План, {{ lot.currency }}</th>
-            <th scope="col">Фактическая дата</th><th scope="col">Факт, {{ lot.currency }}</th></tr></thead>
+            <th scope="col" class="number">Количество</th><th scope="col" class="number">План, {{ lot.currency }}</th>
+            <th scope="col">Фактическая дата</th>
+            <th scope="col" class="number">Факт, {{ lot.currency }}</th></tr></thead>
           <tbody>
             {% for payment in lot.payments %}
             <tr data-lot-id="{{ lot.id }}" data-payment-id="{{ payment.id }}">
               <td>{{ payment.planned_date }}</td>
               <td>{% if payment.kind == 'coupon' %}Купон{% else %}Погашение{% endif %}</td>
-              <td>{{ payment.quantity }}</td><td>{{ payment.planned_amount|money }}</td>
+              <td class="number">{{ payment.quantity }}</td><td class="number">{{ payment.planned_amount|money }}</td>
               {% if payment.actual %}
-              <td>{{ payment.actual.actual_date }}</td><td>{{ payment.actual.amount|money }}</td>
+              <td>{{ payment.actual.actual_date }}</td><td class="number">{{ payment.actual.amount|money }}</td>
               {% elif payment.kind == 'coupon' and payment.amount|money == '0,00' %}
               <td colspan="2">Нулевой купон — подтверждение не требуется</td>
               {% else %}

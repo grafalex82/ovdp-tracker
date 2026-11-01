@@ -11,7 +11,7 @@
   <body>
     <main class="{% block main_class %}{% endblock %}">
       <header class="site-header">
-        <p class="site-name">Трекер ОВДП</p>
+        <p class="site-name"><span class="site-logo" aria-hidden="true">О</span>Трекер ОВДП</p>
         <nav aria-label="Основные разделы" class="section-nav">
           {% if request.endpoint == 'index' %}
           <span aria-current="page">Портфель</span>
@@ -22,21 +22,23 @@
           <span aria-disabled="true">Статистика</span>
         </nav>
       </header>
-      <nav aria-label="Хлебные крошки" class="breadcrumbs">
-        <ol>
-          {% for label, href in breadcrumbs|default([('Портфель', none)]) %}
-          <li>{% if href %}<a href="{{ href }}">{{ label }}</a>
-            {% else %}<span aria-current="page">{{ label }}</span>{% endif %}</li>
-          {% endfor %}
-        </ol>
-      </nav>
-      {% block content %}{% endblock %}
+      <div class="page-content">
+        <nav aria-label="Хлебные крошки" class="breadcrumbs">
+          <ol>
+            {% for label, href in breadcrumbs|default([('Портфель', none)]) %}
+            <li>{% if href %}<a href="{{ href }}">{{ label }}</a>
+              {% else %}<span aria-current="page">{{ label }}</span>{% endif %}</li>
+            {% endfor %}
+          </ol>
+        </nav>
+        {% block content %}{% endblock %}
+      </div>
     </main>
     <dialog id="unsaved-dialog" aria-labelledby="unsaved-title" aria-describedby="unsaved-description">
       <h2 id="unsaved-title">Есть несохранённые изменения</h2>
       <p id="unsaved-description">При выходе введённые изменения будут потеряны.</p>
       <div class="dialog-actions">
-        <button type="button" id="unsaved-stay" autofocus>Остаться</button>
+        <button type="button" id="unsaved-stay" class="primary" autofocus>Остаться</button>
         <button type="button" id="unsaved-leave">Выйти без сохранения</button>
       </div>
     </dialog>

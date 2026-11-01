@@ -9,20 +9,24 @@
   {% if errors.get(name) %}<p class="error" id="{{ name }}-error">{{ errors[name] }}</p>{% endif %}
 {% endmacro %}
 {% macro field(name, label, type='text', required=true, inputmode=none, show_error=true) %}
-  <label for="{{ name }}">{{ label }}</label>
-  <input id="{{ name }}" name="{{ name }}" type="{{ type }}" value="{{ values.get(name, '') }}"
-         {% if required %}required{% endif %} {% if inputmode %}inputmode="{{ inputmode }}"{% endif %}
-         {% if name == 'purchase_date' %}max="{{ today }}"{% endif %}
-         {% if errors.get(name) %}aria-invalid="true" aria-describedby="{{ name }}-error"{% endif %}>
-  {% if show_error %}{{ field_error(name) }}{% endif %}
+  <div class="field">
+    <label for="{{ name }}">{{ label }}</label>
+    <input id="{{ name }}" name="{{ name }}" type="{{ type }}" value="{{ values.get(name, '') }}"
+           {% if required %}required{% endif %} {% if inputmode %}inputmode="{{ inputmode }}"{% endif %}
+           {% if name == 'purchase_date' %}max="{{ today }}"{% endif %}
+           {% if errors.get(name) %}aria-invalid="true" aria-describedby="{{ name }}-error"{% endif %}>
+    {% if show_error %}{{ field_error(name) }}{% endif %}
+  </div>
 {% endmacro %}
 {% set manual = values.get('entry_mode', 'nbu') == 'manual' %}
 {% set existing = values.get('issue_mode') == 'existing' %}
 {% block content %}
-      <h1>Новая покупка</h1>
+      <div class="page-heading">
+        <div><h1>Новая покупка</h1><p class="subtitle">Выберите выпуск и укажите параметры покупки</p></div>
+      </div>
       {% if errors %}<p role="alert" class="error">Please correct the errors below.</p>{% endif %}
       {% if errors.get('form') %}<p role="alert" class="error">{{ errors.form }}</p>{% endif %}
-      <form method="post" action="{{ url_for('purchases.new_purchase') }}"
+      <form method="post" action="{{ url_for('purchases.new_purchase') }}" class="purchase-form"
             data-unsaved-form data-unsaved-error="{{ 'true' if errors else 'false' }}"
             data-lookup-url="{{ url_for('purchases.lookup_issue') }}">
         {% include 'unsaved_baseline.html' %}
@@ -36,96 +40,108 @@
                value="{{ values.get('loaded_isin', '') }}">
         <input type="hidden" id="issue_token" name="issue_token" data-unsaved-ignore
                value="{{ values.get('issue_token', '') }}">
-        <fieldset class="entry-mode">
-          <legend>Способ добавления</legend>
-          <div class="mode-switch">
-            <label><input type="radio" name="entry_mode" value="nbu" {% if not manual %}checked{% endif %}>
-              Подтянуть из НБУ</label>
-            <label><input type="radio" name="entry_mode" value="manual" {% if manual %}checked{% endif %}>
-              Ввести вручную</label>
+        <section class="form-panel" aria-label="Выпуск облигации">
+          <h2>Выпуск облигации</h2>
+          <fieldset class="entry-mode">
+            <legend>Способ добавления</legend>
+            <div class="mode-switch">
+              <label><input type="radio" name="entry_mode" value="nbu" {% if not manual %}checked{% endif %}>
+                Подтянуть из НБУ</label>
+              <label><input type="radio" name="entry_mode" value="manual" {% if manual %}checked{% endif %}>
+                Ввести вручную</label>
+            </div>
+          </fieldset>
+          {{ field('isin', 'ISIN') }}
+          <p id="lookup-status" role="status" aria-live="polite"></p>
+          <div id="nbu-controls" {% if manual %}hidden{% endif %}>
+            <button type="button" id="lookup-retry">Загрузить повторно</button>
           </div>
-        </fieldset>
-        {{ field('isin', 'ISIN') }}
-        <p id="lookup-status" role="status" aria-live="polite"></p>
-        <div id="nbu-controls" {% if manual %}hidden{% endif %}>
-          <button type="button" id="lookup-retry">Загрузить повторно</button>
-        </div>
-        <p id="saved-details" hidden></p>
-        <section id="issue-preview" aria-label="Параметры выпуска" {% if not source_values %}hidden{% endif %}>
-          <h2>Параметры выпуска</h2>
-          <p id="existing-issue-hint" {% if not existing %}hidden{% endif %}>
-            Используются сохранённые реквизиты и общий календарь ISIN. Введите только параметры покупки.
-            Дата покупки определяет права на выплаты, не меняя календарь выпуска.
-          </p>
-          <dl class="purchase-fields">
-            {% for name, label in preview_fields %}
-            <dt>{{ label }}</dt><dd data-issue-field="{{ name }}">{{ source_values.get(name, '') or '—' }}</dd>
+          <p id="saved-details" hidden></p>
+          <section id="issue-preview" aria-label="Параметры выпуска" {% if not source_values %}hidden{% endif %}>
+            <h2>Параметры выпуска</h2>
+            <p id="existing-issue-hint" {% if not existing %}hidden{% endif %}>
+              Используются сохранённые реквизиты и общий календарь ISIN. Введите только параметры покупки.
+              Дата покупки определяет права на выплаты, не меняя календарь выпуска.
+            </p>
+            <dl class="purchase-fields">
+              {% for name, label in preview_fields %}
+              <div><dt>{{ label }}</dt>
+                <dd data-issue-field="{{ name }}">{{ source_values.get(name, '') or '—' }}</dd></div>
+              {% endfor %}
+              {% set source_coupons = source_values.get('coupons', []) %}
+              <div><dt>Количество купонов</dt><dd id="source-coupon-count">{{ source_coupons|length }}</dd></div>
+            </dl>
+            <div class="table-scroll" role="region" aria-label="Выплаты выпуска" tabindex="0">
+              <table>
+                <caption>Расписание выплат на одну облигацию</caption>
+                <thead><tr><th scope="col">Дата</th><th scope="col">Выплата</th><th scope="col">Сумма</th></tr></thead>
+                <tbody id="source-payments">
+                  {% for coupon in source_coupons %}
+                  <tr><td>{{ coupon.date }}</td><td>Купон</td>
+                    <td>{{ coupon.amount|money }} {{ source_values.currency }}</td></tr>
+                  {% endfor %}
+                  {% if source_values %}
+                  <tr><td>{{ source_values.maturity_date }}</td><td>Погашение</td>
+                    <td>{{ source_values.redemption_amount|money }} {{ source_values.currency }}</td></tr>
+                  {% endif %}
+                </tbody>
+              </table>
+            </div>
+            {% for name in ['issue_date', 'nominal_rate', 'coupon_period', 'bond_type', 'redemption_amount'] %}
+              {{ field_error(name) }}
             {% endfor %}
-            {% set source_coupons = source_values.get('coupons', []) %}
-            <dt>Количество купонов</dt><dd id="source-coupon-count">{{ source_coupons|length }}</dd>
-          </dl>
-          <div class="table-scroll" role="region" aria-label="Выплаты выпуска" tabindex="0">
-            <table>
-              <caption>Расписание выплат на одну облигацию</caption>
-              <thead><tr><th scope="col">Дата</th><th scope="col">Выплата</th><th scope="col">Сумма</th></tr></thead>
-              <tbody id="source-payments">
-                {% for coupon in source_coupons %}
-                <tr><td>{{ coupon.date }}</td><td>Купон</td>
-                  <td>{{ coupon.amount|money }} {{ source_values.currency }}</td></tr>
-                {% endfor %}
-                {% if source_values %}
-                <tr><td>{{ source_values.maturity_date }}</td><td>Погашение</td>
-                  <td>{{ source_values.redemption_amount|money }} {{ source_values.currency }}</td></tr>
-                {% endif %}
-              </tbody>
-            </table>
-          </div>
-          {% for name in ['issue_date', 'nominal_rate', 'coupon_period', 'bond_type', 'redemption_amount'] %}
-            {{ field_error(name) }}
-          {% endfor %}
-          {% if not manual or existing %}{{ field_error('maturity_date') }}{% endif %}
-          {% if existing %}
-            {% for name in ['nominal', 'currency', 'coupons'] %}{{ field_error(name) }}{% endfor %}
-          {% endif %}
-        </section>
-        <fieldset id="manual-fields" {% if not manual or existing %}hidden disabled{% endif %}>
-          <legend>Параметры выпуска</legend>
-          {{ field('nominal', 'Номинал одной облигации', inputmode='decimal', show_error=not existing) }}
-          <label for="currency">Валюта</label>
-          <select id="currency" name="currency" required
-                  {% if errors.get('currency') %}aria-invalid="true" aria-describedby="currency-error"{% endif %}>
-            {% if values.get('currency') not in currencies %}
-            <option value="{{ values.get('currency', '') }}" selected>{{ values.get('currency', '') }}</option>
+            {% if not manual or existing %}{{ field_error('maturity_date') }}{% endif %}
+            {% if existing %}
+              {% for name in ['nominal', 'currency', 'coupons'] %}{{ field_error(name) }}{% endfor %}
             {% endif %}
-            {% for currency in currencies %}
-            <option value="{{ currency }}" {% if values.get('currency') == currency %}selected{% endif %}>
-              {{ currency }}
-            </option>
-            {% endfor %}
-          </select>
-          {% if not existing %}{{ field_error('currency') }}{% endif %}
-          {% include '_coupon_editor.html' %}
-          <div id="manual-maturity">
-            {{ field('maturity_date', 'Дата погашения', 'date', show_error=false) }}
-            <p class="hint">Укажите дату погашения для облигации без купонов.</p>
-          </div>
-          <p id="inferred-maturity" hidden>Погашение по последнему купону:
-            <output id="inferred-maturity-date"></output></p>
-          {% if manual and not existing %}{{ field_error('maturity_date') }}{% endif %}
-          <p class="hint">При наличии купонов погашение определяется последней купонной датой.
-            Сумма погашения равна номиналу.</p>
-        </fieldset>
+          </section>
+          <fieldset id="manual-fields" {% if not manual or existing %}hidden disabled{% endif %}>
+            <legend>Параметры выпуска</legend>
+            <div class="field-grid">
+              {{ field('nominal', 'Номинал одной облигации', inputmode='decimal', show_error=not existing) }}
+              <div class="field">
+                <label for="currency">Валюта</label>
+                <select id="currency" name="currency" required
+                        {% if errors.get('currency') %}aria-invalid="true" aria-describedby="currency-error"{% endif %}>
+                  {% if values.get('currency') not in currencies %}
+                  <option value="{{ values.get('currency', '') }}" selected>{{ values.get('currency', '') }}</option>
+                  {% endif %}
+                  {% for currency in currencies %}
+                  <option value="{{ currency }}" {% if values.get('currency') == currency %}selected{% endif %}>
+                    {{ currency }}
+                  </option>
+                  {% endfor %}
+                </select>
+                {% if not existing %}{{ field_error('currency') }}{% endif %}
+              </div>
+            </div>
+            {% include '_coupon_editor.html' %}
+            <div id="manual-maturity">
+              {{ field('maturity_date', 'Дата погашения', 'date', show_error=false) }}
+              <p class="hint">Укажите дату погашения для облигации без купонов.</p>
+            </div>
+            <p id="inferred-maturity" hidden>Погашение по последнему купону:
+              <output id="inferred-maturity-date"></output></p>
+            {% if manual and not existing %}{{ field_error('maturity_date') }}{% endif %}
+            <p class="hint">При наличии купонов погашение определяется последней купонной датой.
+              Сумма погашения равна номиналу.</p>
+          </fieldset>
+        </section>
         <fieldset id="purchase-fields">
           <legend>Параметры покупки</legend>
-          {{ field('purchase_date', 'Дата покупки', 'date') }}
+          <div class="field-grid">
+            {{ field('purchase_date', 'Дата покупки', 'date') }}
+            {{ field('purchase_price', 'Цена одной облигации', inputmode='decimal') }}
+            {{ field('quantity', 'Количество облигаций', inputmode='numeric') }}
+            {{ field('bank_name', 'Банк') }}
+          </div>
           <p class="hint">Можно указать прошедшую дату. Будущие покупки пока не поддерживаются.</p>
-          {{ field('purchase_price', 'Цена одной облигации', inputmode='decimal') }}
-          {{ field('quantity', 'Количество облигаций', inputmode='numeric') }}
-          {{ field('bank_name', 'Банк') }}
           <p class="hint">Суммы указываются в валюте выпуска, максимум два знака после точки или запятой.</p>
         </fieldset>
-        <button id="save-purchase" type="submit">Сохранить покупку</button>
-        <a href="{{ url_for('index') }}">Отмена</a>
+        <div class="form-actions">
+          <button id="save-purchase" type="submit" class="primary">Сохранить покупку</button>
+          <a href="{{ url_for('index') }}">Отмена</a>
+        </div>
       </form>
       <script type="application/json" id="initial-source">{{ source_values|tojson }}</script>
 {% endblock %}

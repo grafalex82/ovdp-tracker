@@ -3,28 +3,32 @@
   (lot.isin, url_for('purchases.issue_details', isin=lot.isin)), ('Покупка №' ~ lot.id, none)] %}
 {% block title %}Покупка №{{ lot.id }} — {{ lot.isin }} — Трекер ОВДП{% endblock %}
 {% block content %}
-      <h1>Покупка №{{ lot.id }}</h1>
-      <h2>{{ lot.isin }}</h2>
+      <div class="page-heading">
+        <div><h1>Покупка №{{ lot.id }}</h1><p class="subtitle">{{ lot.isin }}</p></div>
+        <p class="status">{% if lot.closed %}Закрыта{% else %}Действующая{% endif %}</p>
+      </div>
       {% if lot.closed %}
       <p><a href="{{ url_for('purchases.issue_details', isin=lot.isin) }}">Все покупки {{ lot.isin }}</a></p>
       {% endif %}
-      <p class="status">{% if lot.closed %}Закрыта{% else %}Действующая{% endif %}</p>
       <dl class="purchase-fields">
-        <dt>ISIN</dt><dd>{{ lot.isin }}</dd>
-        <dt>Банк</dt><dd>{{ lot.bank_name }}</dd>
-        <dt>Дата покупки</dt><dd>{{ lot.purchase_date }}</dd>
-        <dt>Валюта выпуска</dt><dd>{{ lot.currency }}</dd>
-        <dt>Куплено облигаций</dt><dd>{{ lot.quantity }}</dd>
-        <dt>Осталось облигаций</dt><dd>{{ lot.remaining_quantity }}</dd>
-        <dt>Цена одной облигации</dt><dd>{{ lot.purchase_price|money }} {{ lot.currency }}</dd>
-        <dt>Стоимость покупки</dt><dd>{{ lot.purchase_total|money }} {{ lot.currency }}</dd>
-        <dt>Номинал одной облигации</dt><dd>{{ lot.nominal|money }} {{ lot.currency }}</dd>
-        <dt>Дата выпуска</dt><dd>{{ lot.issue_date or 'Не указана' }}</dd>
-        <dt>Номинальная ставка</dt><dd>{{ lot.nominal_rate or 'Не указана' }}{% if lot.nominal_rate %}%{% endif %}</dd>
-        <dt>Купонный период, дней</dt><dd>{{ lot.coupon_period if lot.coupon_period is not none else 'Не указан' }}</dd>
-        <dt>Вид облигации</dt><dd>{{ lot.bond_type or 'Не указан' }}</dd>
-        <dt>Количество купонов</dt><dd>{{ lot.schedule|selectattr('kind', 'equalto', 'coupon')|list|length }}</dd>
-        <dt>Дата погашения</dt><dd>{{ lot.maturity_date }}</dd>
+        <div><dt>ISIN</dt><dd>{{ lot.isin }}</dd></div>
+        <div><dt>Банк</dt><dd>{{ lot.bank_name }}</dd></div>
+        <div><dt>Дата покупки</dt><dd>{{ lot.purchase_date }}</dd></div>
+        <div><dt>Валюта выпуска</dt><dd>{{ lot.currency }}</dd></div>
+        <div><dt>Куплено облигаций</dt><dd>{{ lot.quantity }}</dd></div>
+        <div><dt>Осталось облигаций</dt><dd>{{ lot.remaining_quantity }}</dd></div>
+        <div><dt>Цена одной облигации</dt><dd>{{ lot.purchase_price|money }} {{ lot.currency }}</dd></div>
+        <div><dt>Стоимость покупки</dt><dd>{{ lot.purchase_total|money }} {{ lot.currency }}</dd></div>
+        <div><dt>Номинал одной облигации</dt><dd>{{ lot.nominal|money }} {{ lot.currency }}</dd></div>
+        <div><dt>Дата выпуска</dt><dd>{{ lot.issue_date or 'Не указана' }}</dd></div>
+        <div><dt>Номинальная ставка</dt>
+          <dd>{{ lot.nominal_rate or 'Не указана' }}{% if lot.nominal_rate %}%{% endif %}</dd></div>
+        <div><dt>Купонный период, дней</dt>
+          <dd>{{ lot.coupon_period if lot.coupon_period is not none else 'Не указан' }}</dd></div>
+        <div><dt>Вид облигации</dt><dd>{{ lot.bond_type or 'Не указан' }}</dd></div>
+        <div><dt>Количество купонов</dt>
+          <dd>{{ lot.schedule|selectattr('kind', 'equalto', 'coupon')|list|length }}</dd></div>
+        <div><dt>Дата погашения</dt><dd>{{ lot.maturity_date }}</dd></div>
       </dl>
       <h2>Общий календарь выпуска</h2>
       <p class="hint">Календарь един для всех покупок этого ISIN и включает сохранённые даты до покупки.
@@ -33,13 +37,13 @@
         <table>
           <caption>Расписание {{ lot.isin }}</caption>
           <thead><tr><th scope="col">Дата</th><th scope="col">Выплата</th>
-            <th scope="col">На одну облигацию</th></tr></thead>
+            <th scope="col" class="number">На одну облигацию</th></tr></thead>
           <tbody>
             {% for event in lot.schedule %}
             <tr data-event-id="{{ event.id }}">
               <td>{{ event.planned_date }}</td>
               <td>{% if event.kind == 'coupon' %}Купон{% else %}Погашение{% endif %}</td>
-              <td>{{ event.amount|money }} {{ lot.currency }}</td>
+              <td class="number">{{ event.amount|money }} {{ lot.currency }}</td>
             </tr>
             {% else %}<tr><td colspan="3">Расписание пока не заполнено.</td></tr>{% endfor %}
           </tbody>

@@ -143,8 +143,10 @@ async function loadIssue() {
   const requestId = sequence;
   const requestedIsin = isin.value.trim().toUpperCase();
   const manual = manualSelected();
+  status.classList.remove("error");
   if (!requestedIsin) return;
   if (!manual && !/^[A-Z]{2}[A-Z0-9]{9}[0-9]$/.test(requestedIsin)) {
+    status.classList.add("error");
     status.textContent = "Enter a complete 12-character ISIN, or select manual entry.";
     return;
   }
@@ -171,6 +173,7 @@ async function loadIssue() {
     }
   } catch (error) {
     if (requestId !== sequence || error.name === "AbortError") return;
+    status.classList.add("error");
     status.textContent = error.message || "Could not load issue data. Retry or select manual entry.";
   } finally {
     if (requestId === sequence) {
@@ -191,6 +194,7 @@ function changeIsin() {
   issueToken.value = "";
   mode.value = manualSelected() ? "manual" : "pending";
   document.getElementById("saved-details").hidden = true;
+  status.classList.remove("error");
   status.textContent = "";
   updateMode();
   timer = setTimeout(loadIssue, 300);
@@ -202,6 +206,7 @@ function changeEntryMode() {
   cancelLookup();
   const hasSource = sourceIsin && sourceIsin === isin.value.trim().toUpperCase();
   mode.value = hasSource && sourceExisting ? "existing" : (manualSelected() ? "manual" : "pending");
+  status.classList.remove("error");
   status.textContent = manualSelected() ? "Ручной ввод параметров выпуска." : "";
   if (mode.value === "existing") status.textContent = "Показан сохранённый выпуск.";
   if (hasSource && !manualSelected()) {
