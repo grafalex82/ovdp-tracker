@@ -1,4 +1,4 @@
-"""Start the application with python -m ovdp_calculator."""
+"""Start the application with python -m ovdp_tracker."""
 
 from . import create_app
 

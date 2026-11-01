@@ -2,8 +2,8 @@
 
 import pytest
 
-from ovdp_calculator.db import Database, DatabaseError
-from ovdp_calculator.web import with_database
+from ovdp_tracker.db import Database, DatabaseError
+from ovdp_tracker.web import with_database
 
 
 def test_application_opens_home_page_and_local_styles(app):
@@ -11,7 +11,7 @@ def test_application_opens_home_page_and_local_styles(app):
         # Verify that the home page renders through the database-aware handler.
         with client.get("/") as response:
             assert response.status_code == 200
-            assert "Трекер ОВДП" in response.get_data(as_text=True)
+            assert "ОВДП Трекер" in response.get_data(as_text=True)
 
         # Verify that the application serves its local stylesheet.
         with client.get("/static/style.css") as response:

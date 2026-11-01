@@ -2,8 +2,8 @@
 
 import pytest
 
-from ovdp_calculator import create_app
-from ovdp_calculator.db import Database
+from ovdp_tracker import create_app
+from ovdp_tracker.db import Database
 
 
 @pytest.fixture

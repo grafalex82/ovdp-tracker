@@ -9,9 +9,9 @@ import sqlite3
 
 import pytest
 
-from ovdp_calculator import db
-from ovdp_calculator import create_app
-from ovdp_calculator.db import Database
+from ovdp_tracker import db
+from ovdp_tracker import create_app
+from ovdp_tracker.db import Database
 
 
 def test_instance_owns_connection_and_context_exit_closes_it(database_path):

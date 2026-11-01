@@ -4,7 +4,7 @@ from decimal import Decimal, ROUND_DOWN, localcontext
 
 import pytest
 
-from ovdp_calculator.money import operation_amount, parse_money
+from ovdp_tracker.money import operation_amount, parse_money
 
 
 @pytest.mark.parametrize("value, expected", [

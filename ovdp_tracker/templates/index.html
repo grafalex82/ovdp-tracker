@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% if history %}{% set breadcrumbs = [('Портфель', url_for('index')), ('Закрытые позиции', none)] %}{% endif %}
-{% block title %}{% if history %}Закрытые позиции — {% endif %}Трекер ОВДП{% endblock %}
+{% block title %}{% if history %}Закрытые позиции — {% endif %}ОВДП Трекер{% endblock %}
 {% block main_class %}portfolio{% endblock %}
 {% block scripts %}<script src="{{ url_for('static', filename='portfolio.js') }}" defer></script>{% endblock %}
 {% block content %}

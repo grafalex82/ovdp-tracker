@@ -6,7 +6,7 @@ import re
 
 import pytest
 
-from ovdp_calculator.purchases import IssueValidationError, validate_issue
+from ovdp_tracker.purchases import IssueValidationError, validate_issue
 
 
 def rendered_coupons(html):

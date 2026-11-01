@@ -6,9 +6,9 @@ from html import unescape
 
 import pytest
 
-from ovdp_calculator import create_app
-from ovdp_calculator.db import Database
-from ovdp_calculator.portfolio import get_lot_details, get_position_details, list_positions
+from ovdp_tracker import create_app
+from ovdp_tracker.db import Database
+from ovdp_tracker.portfolio import get_lot_details, get_position_details, list_positions
 
 
 @pytest.fixture(autouse=True)
@@ -21,8 +21,8 @@ def fixed_today(monkeypatch):
             return cls(2026, 10, 31)
 
     # Keep explicit dates in domain calls compatible with ordinary date instances.
-    monkeypatch.setattr("ovdp_calculator.web.date", LocalDate)
-    monkeypatch.setattr("ovdp_calculator.portfolio.date", LocalDate)
+    monkeypatch.setattr("ovdp_tracker.web.date", LocalDate)
+    monkeypatch.setattr("ovdp_tracker.portfolio.date", LocalDate)
 
 
 @pytest.fixture

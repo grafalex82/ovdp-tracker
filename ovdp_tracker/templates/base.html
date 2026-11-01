@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>{% block title %}Трекер ОВДП{% endblock %}</title>
+    <title>{% block title %}ОВДП Трекер{% endblock %}</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
     {% block scripts %}{% endblock %}
     <script src="{{ url_for('static', filename='unsaved-form.js') }}" defer></script>
@@ -11,7 +11,7 @@
   <body>
     <main class="{% block main_class %}{% endblock %}">
       <header class="site-header">
-        <p class="site-name"><span class="site-logo" aria-hidden="true">О</span>Трекер ОВДП</p>
+        <p class="site-name"><span class="site-logo" aria-hidden="true">О</span>ОВДП Трекер</p>
         <nav aria-label="Основные разделы" class="section-nav">
           {% if request.endpoint == 'index' %}
           <span aria-current="page">Портфель</span>

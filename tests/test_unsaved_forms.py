@@ -6,7 +6,7 @@ from html import unescape
 
 import pytest
 
-from ovdp_calculator.db import Database, DatabaseError
+from ovdp_tracker.db import Database, DatabaseError
 
 
 def storage_snapshot(database):

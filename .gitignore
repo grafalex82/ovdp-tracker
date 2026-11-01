@@ -2,3 +2,37 @@ __pycache__/
 *.py[cod]
 instance/
 .pytest_cache/
+
+# Local Python environments and build artifacts.
+.venv/
+venv/
+env/
+build/
+dist/
+*.egg-info/
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+.ruff_cache/
+
+# Private configuration, credentials and local databases.
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.db
+*.db-*
+*.sqlite
+*.sqlite-*
+*.sqlite3
+*.sqlite3-*
+*.log
+
+# Editor and operating system files.
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+Desktop.ini

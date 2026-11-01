@@ -5,8 +5,8 @@ import json
 
 import pytest
 
-from ovdp_calculator import create_app
-from ovdp_calculator.db import Database, DatabaseError
+from ovdp_tracker import create_app
+from ovdp_tracker.db import Database, DatabaseError
 
 
 @pytest.fixture(autouse=True)
@@ -19,7 +19,7 @@ def fixed_today(monkeypatch):
             return cls(2026, 10, 31)
 
     # Domain calls receive the same date explicitly where needed.
-    monkeypatch.setattr("ovdp_calculator.web.date", LocalDate)
+    monkeypatch.setattr("ovdp_tracker.web.date", LocalDate)
 
 
 @pytest.fixture

@@ -1,4 +1,4 @@
-"""Local application for tracking Ukrainian government bonds."""
+"""OVDP Tracker: a local application for tracking Ukrainian government bonds."""
 
 from secrets import token_hex
 

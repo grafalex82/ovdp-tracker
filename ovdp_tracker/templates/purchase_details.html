@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% set breadcrumbs = [('Портфель', url_for('index')),
   (lot.isin, url_for('purchases.issue_details', isin=lot.isin)), ('Покупка №' ~ lot.id, none)] %}
-{% block title %}Покупка №{{ lot.id }} — {{ lot.isin }} — Трекер ОВДП{% endblock %}
+{% block title %}Покупка №{{ lot.id }} — {{ lot.isin }} — ОВДП Трекер{% endblock %}
 {% block content %}
       <div class="page-heading">
         <div><h1>Покупка №{{ lot.id }}</h1><p class="subtitle">{{ lot.isin }}</p></div>

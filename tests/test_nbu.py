@@ -8,8 +8,8 @@ from urllib.error import URLError
 
 import pytest
 
-from ovdp_calculator.nbu import NbuClient, NbuError, NbuNotFound, parse_bond_data
-from ovdp_calculator.purchases import IssueValidationError, validate_imported_issue
+from ovdp_tracker.nbu import NbuClient, NbuError, NbuNotFound, parse_bond_data
+from ovdp_tracker.purchases import IssueValidationError, validate_imported_issue
 
 
 @pytest.fixture
@@ -134,7 +134,7 @@ def test_future_bond_can_be_parsed_and_validated_without_any_purchase(security, 
     def unexpected_purchase_validation(*args, **kwargs):
         raise AssertionError("Bond processing must not validate a purchase.")
 
-    monkeypatch.setattr("ovdp_calculator.purchases.validate_purchase", unexpected_purchase_validation)
+    monkeypatch.setattr("ovdp_tracker.purchases.validate_purchase", unexpected_purchase_validation)
     security.update({"razm_date": "2040-01-01", "pgs_date": "2041-01-01"})
     security["payments"] = [{"pay_type": "2", "pay_date": "2041-01-01", "pay_val": 1000}]
 
@@ -201,7 +201,7 @@ def test_download_preserves_decimal_literals_and_timeout(monkeypatch):
         calls.append((url, timeout))
         return BytesIO(b'[{"amount":80.12}]')
 
-    monkeypatch.setattr("ovdp_calculator.nbu.urlopen", open_response)
+    monkeypatch.setattr("ovdp_tracker.nbu.urlopen", open_response)
 
     # Decimal parsing must avoid any binary float intermediate.
     assert NbuClient(timeout=3)._download() == [{"amount": Decimal("80.12")}]
@@ -210,7 +210,7 @@ def test_download_preserves_decimal_literals_and_timeout(monkeypatch):
 
 @pytest.mark.parametrize("payload", [b"bad JSON", b"{}", b"[1]", b"\xff"])
 def test_invalid_json_or_directory_shape_is_rejected(monkeypatch, payload):
-    monkeypatch.setattr("ovdp_calculator.nbu.urlopen", lambda *args, **kwargs: BytesIO(payload))
+    monkeypatch.setattr("ovdp_tracker.nbu.urlopen", lambda *args, **kwargs: BytesIO(payload))
     with pytest.raises(NbuError):
         NbuClient().lookup("UA4000228381")
 
@@ -329,7 +329,7 @@ def test_network_errors_become_readable_lookup_errors(monkeypatch, failure):
     def unavailable(*args, **kwargs):
         raise failure
 
-    monkeypatch.setattr("ovdp_calculator.nbu.urlopen", unavailable)
+    monkeypatch.setattr("ovdp_tracker.nbu.urlopen", unavailable)
 
     # Both failures must support the same retry/manual-entry flow rather than producing HTTP 500.
     with pytest.raises(NbuError, match="Could not load the NBU directory"):

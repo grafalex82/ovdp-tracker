@@ -4,7 +4,7 @@ from contextlib import contextmanager
 from pathlib import Path
 import sqlite3
 
-from ovdp_calculator.money import parse_money
+from ovdp_tracker.money import parse_money
 
 DEFAULT_DATABASE = Path(__file__).resolve().parent.parent / "instance" / "portfolio.sqlite3"
 SCHEMA_VERSION = 3

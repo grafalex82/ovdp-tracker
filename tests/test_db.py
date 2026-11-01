@@ -2,8 +2,8 @@
 
 import pytest
 
-from ovdp_calculator.db import Database, DatabaseError, DataIntegrityError
-from ovdp_calculator.money import operation_amount, parse_money
+from ovdp_tracker.db import Database, DatabaseError, DataIntegrityError
+from ovdp_tracker.money import operation_amount, parse_money
 
 
 def add_history(database, issue_data, lot_data):
