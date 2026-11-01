@@ -46,6 +46,89 @@ def test_form_defaults_do_not_write_data(app, database):
     assert database.list_issues() == database.list_lots() == database.list_banks() == []
 
 
+def test_bank_choices_follow_successful_purchases_and_survive_restart(app, app_config, database, purchase_form):
+    # Start with an unrestricted bank input and an empty list of saved suggestions.
+    with app.test_client() as client:
+        html = client.get("/purchases/new").get_data(as_text=True)
+        bank_input = html.split('id="bank_name"', 1)[1].split(">", 1)[0]
+        assert 'list="bank-options"' in bank_input
+        choices = html.split('<datalist id="bank-options">', 1)[1].split("</datalist>", 1)[0]
+        assert "<option" not in choices
+        assert database.list_banks() == []
+
+        # Save a typed name and make it selectable on the next form.
+        purchase_form["bank_name"] = "  Банк А  "
+        assert client.post("/purchases/new", data=purchase_form).status_code == 302
+        html = client.get("/purchases/new").get_data(as_text=True)
+        choices = html.split('<datalist id="bank-options">', 1)[1].split("</datalist>", 1)[0]
+        assert '<option value="Банк А">' in choices
+
+    # Reopen the application and submit the saved suggestion for another purchase.
+    restarted = create_app(app_config)
+    with restarted.test_client() as client:
+        html = client.get("/purchases/new").get_data(as_text=True)
+        assert '<option value="Банк А">' in html
+        keys = ("isin", "purchase_date", "purchase_price", "quantity")
+        repeat = {key: purchase_form[key] for key in keys}
+        repeat.update({"bank_name": "Банк А", "issue_mode": "existing"})
+        assert client.post("/purchases/new", data=repeat).status_code == 302
+    bank, = database.list_banks()
+    assert bank["name"] == "Банк А"
+    assert [lot["bank_id"] for lot in database.list_lots()] == [bank["id"], bank["id"]]
+
+
+@pytest.mark.parametrize("name", [" банк а ", "\tБАНК А\n", "Банк а"])
+def test_repeat_purchase_reuses_bank_despite_case_and_surrounding_whitespace(app, database, purchase_form, name):
+    # Save the first spelling and submit a differently formatted name through the same form.
+    with app.test_client() as client:
+        assert client.post("/purchases/new", data=purchase_form).status_code == 302
+        keys = ("isin", "purchase_date", "purchase_price", "quantity")
+        repeat = {key: purchase_form[key] for key in keys}
+        repeat.update({"bank_name": name, "issue_mode": "existing"})
+        assert client.post("/purchases/new", data=repeat).status_code == 302
+        html = client.get("/purchases/new").get_data(as_text=True)
+
+    # Preserve one canonical display name and link both purchases to that bank.
+    bank, = database.list_banks()
+    assert bank["name"] == "Банк А"
+    lots = database.list_lots()
+    assert len(lots) == 2
+    assert {lot["bank_id"] for lot in lots} == {bank["id"]}
+    choices = html.split('<datalist id="bank-options">', 1)[1].split("</datalist>", 1)[0]
+    assert choices.count("<option ") == 1
+    assert '<option value="Банк А">' in choices
+
+
+@pytest.mark.parametrize("failure", ["validation", "storage"])
+def test_failed_purchase_keeps_bank_input_without_adding_suggestion(app, database, purchase_form, monkeypatch, failure):
+    # Keep an existing suggestion while submitting a new bank with a rejected purchase.
+    bank = database.add_bank("Сохранённый банк")
+    purchase_form["bank_name"] = "Новый банк"
+    if failure == "validation":
+        purchase_form["quantity"] = "0"
+    else:
+        # Fail after the new bank is inserted to verify rollback of that bank as well.
+        def fail_lot(self, **parameters):
+            assert any(bank["name"] == "Новый банк" for bank in self.list_banks())
+            raise DatabaseError("Simulated purchase storage failure.")
+
+        monkeypatch.setattr(Database, "add_lot", fail_lot)
+
+    # Retain the raw bank input and saved choices on the protected error form.
+    with app.test_client() as client:
+        response = client.post("/purchases/new", data=purchase_form)
+        assert response.status_code == (400 if failure == "validation" else 503)
+        html = response.get_data(as_text=True)
+        assert 'name="bank_name" type="text" value="Новый банк"' in html
+        assert 'data-unsaved-error="true"' in html
+        choices = html.split('<datalist id="bank-options">', 1)[1].split("</datalist>", 1)[0]
+        assert '<option value="Сохранённый банк">' in choices
+        assert "Новый банк" not in choices
+        assert client.get("/purchases/new").status_code == 200
+    assert database.list_banks() == [bank]
+    assert database.list_lots() == database.list_issues() == database.list_scheduled_payments() == []
+
+
 def test_variable_coupons_and_metadata_survive_restart(app, app_config, database, purchase_form):
     # Persist historical and final coupons with different unit amounts.
     with app.test_client() as client:

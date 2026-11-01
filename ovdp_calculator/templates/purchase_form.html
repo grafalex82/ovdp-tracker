@@ -8,12 +8,13 @@
 {% macro field_error(name) %}
   {% if errors.get(name) %}<p class="error" id="{{ name }}-error">{{ errors[name] }}</p>{% endif %}
 {% endmacro %}
-{% macro field(name, label, type='text', required=true, inputmode=none, show_error=true) %}
+{% macro field(name, label, type='text', required=true, inputmode=none, show_error=true, list_id=none) %}
   <div class="field">
     <label for="{{ name }}">{{ label }}</label>
     <input id="{{ name }}" name="{{ name }}" type="{{ type }}" value="{{ values.get(name, '') }}"
            {% if required %}required{% endif %} {% if inputmode %}inputmode="{{ inputmode }}"{% endif %}
            {% if name == 'purchase_date' %}max="{{ today }}"{% endif %}
+           {% if list_id %}list="{{ list_id }}"{% endif %}
            {% if errors.get(name) %}aria-invalid="true" aria-describedby="{{ name }}-error"{% endif %}>
     {% if show_error %}{{ field_error(name) }}{% endif %}
   </div>
@@ -133,8 +134,13 @@
             {{ field('purchase_date', 'Дата покупки', 'date') }}
             {{ field('purchase_price', 'Цена одной облигации', inputmode='decimal') }}
             {{ field('quantity', 'Количество облигаций', inputmode='numeric') }}
-            {{ field('bank_name', 'Банк') }}
+            {{ field('bank_name', 'Банк', list_id='bank-options') }}
           </div>
+          <datalist id="bank-options">
+            {% for bank in banks %}<option value="{{ bank.name }}"></option>{% endfor %}
+          </datalist>
+          <p class="hint">Выберите сохранённый банк из подсказок или введите новый.
+            Новое название запоминается после сохранения покупки.</p>
           <p class="hint">Можно указать прошедшую дату. Будущие покупки пока не поддерживаются.</p>
           <p class="hint">Суммы указываются в валюте выпуска, максимум два знака после точки или запятой.</p>
         </fieldset>

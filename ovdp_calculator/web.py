@@ -93,7 +93,7 @@ def new_purchase(database: Database):
 
     # Render the same form with field errors and the original input strings.
     return render_template(
-        "purchase_form.html", values=values, errors=errors, currencies=CURRENCIES,
+        "purchase_form.html", values=values, errors=errors, currencies=CURRENCIES, banks=database.list_banks(),
         today=today.isoformat(), source_values=source_values, preview_fields=PREVIEW_FIELDS,
     ), status
 
