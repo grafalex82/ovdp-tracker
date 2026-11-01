@@ -1,5 +1,6 @@
 """Verify fresh NBU lookups, bond parsing and protected purchase drafts without network access."""
 
+import json
 from copy import deepcopy
 from decimal import Decimal
 from io import BytesIO
@@ -246,6 +247,7 @@ def test_lookup_populates_only_a_draft_then_saves_atomically(app, database, secu
             "issue_mode": "auto", "loaded_isin": "UA4000228381", "purchase_date": "2024-01-01",
             "purchase_price": "1001.01", "quantity": "3", "bank_name": "Bank A",
         })
+        values["coupons"] = json.dumps(values["coupons"])
         assert client.post("/purchases/new", data=values).status_code == 302
     assert len(database.list_scheduled_payments()) == 8
     assert len(database.list_lots()) == len(database.list_issues()) == 1
@@ -272,7 +274,7 @@ def test_known_issue_and_actual_receipts_survive_changed_or_unavailable_source(a
         response = client.get("/issues/lookup?isin=UA4000228381")
         assert response.json["existing"] is True
         assert "differs" in response.json["warning"]
-        assert "95.90" in response.json["values"]["coupon_schedule"]
+        assert response.json["values"]["coupons"][0] == {"date": "2023-11-08", "amount": "95.90"}
         assert response.json["details_url"] == f'/issues/{lot["isin"]}'
     assert database.list_scheduled_payments() == events
     assert database.list_actual_payments() == [actual]
@@ -283,7 +285,7 @@ def test_known_issue_and_actual_receipts_survive_changed_or_unavailable_source(a
         response = client.get("/issues/lookup?isin=UA4000228381")
     assert response.status_code == 200 and response.json["existing"] is True
     assert "Unsupported NBU bond data" in response.json["warning"]
-    assert "95.90" in response.json["values"]["coupon_schedule"]
+    assert response.json["values"]["coupons"][0] == {"date": "2023-11-08", "amount": "95.90"}
     assert database.list_scheduled_payments() == events
     assert database.list_actual_payments() == [actual]
 
@@ -341,7 +343,7 @@ def test_signed_source_values_cannot_be_replaced_by_posted_manual_fields(app, da
         response = client.get("/issues/lookup?isin=UA4000228381").json
         form = {
             "isin": "UA4000228381", "entry_mode": "nbu", "issue_mode": "auto", "loaded_isin": "UA4000228381",
-            "issue_token": response["issue_token"], "nominal": "1", "currency": "USD", "coupon_schedule": "",
+            "issue_token": response["issue_token"], "nominal": "1", "currency": "USD", "coupons": "[]",
             "purchase_date": "2024-01-01", "purchase_price": "999", "quantity": "3", "bank_name": "Bank A",
         }
         assert client.post("/purchases/new", data=form).status_code == 302
@@ -386,7 +388,7 @@ def test_manual_lookup_never_calls_nbu_and_reuses_saved_issue(app, database, sec
         response = client.get("/issues/lookup?isin=UA4000228381&source=local")
     assert response.status_code == 200
     assert response.json["existing"] is True
-    assert "95.90" in response.json["values"]["coupon_schedule"]
+    assert response.json["values"]["coupons"][0] == {"date": "2023-11-08", "amount": "95.90"}
 
 
 def test_invalid_purchase_retains_read_only_source_preview(app, database, security, monkeypatch):

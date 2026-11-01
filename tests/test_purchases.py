@@ -1,6 +1,7 @@
 """Exercise exact per-event purchase calendars, validation and atomic persistence."""
 
 from datetime import date
+import json
 
 import pytest
 
@@ -26,7 +27,10 @@ def purchase_form():
     return {
         "isin": "UA4000000001", "purchase_date": "2024-02-15", "nominal": "1000", "currency": "UAH",
         "purchase_price": "1024", "quantity": "10", "bank_name": "Банк А", "issue_mode": "manual",
-        "coupon_schedule": "2027-06-01 85\n2024-08-15 80", "maturity_date": "", "infer_maturity_from_coupons": "1",
+        "coupons": json.dumps([
+            {'date': '2027-06-01', 'amount': '85'},
+            {'date': '2024-08-15', 'amount': '80'},
+        ]), "maturity_date": "", "infer_maturity_from_coupons": "1",
         "issue_date": "2023-01-01", "nominal_rate": "16.5", "coupon_period": "182", "bond_type": "Середньострокові",
     }
 
@@ -36,7 +40,7 @@ def test_form_defaults_do_not_write_data(app, database):
         html = client.get("/purchases/new").get_data(as_text=True)
         assert 'value="2026-10-31"' in html
         assert 'name="nominal" type="text" value="1000"' in html
-        assert 'id="coupon_schedule"' in html
+        assert 'id="coupons"' in html
         assert 'id="coupon_amount"' not in html
         assert client.get("/static/purchase.js").status_code == 200
     assert database.list_issues() == database.list_lots() == database.list_banks() == []
@@ -82,7 +86,7 @@ def test_manual_values_and_redemption_override_defaults(app, database, purchase_
 
 
 def test_zero_coupon_issue_requires_only_redemption(app, database, purchase_form):
-    purchase_form.update({"coupon_schedule": "", "maturity_date": "2025-02-15"})
+    purchase_form.update({"coupons": "[]", "maturity_date": "2025-02-15"})
     with app.test_client() as client:
         assert client.post("/purchases/new", data=purchase_form).status_code == 302
     event, = database.list_scheduled_payments()
@@ -91,7 +95,9 @@ def test_zero_coupon_issue_requires_only_redemption(app, database, purchase_form
 
 @pytest.mark.parametrize("day", ["2024-02-15", "2026-10-31"])
 def test_purchase_and_coupon_boundaries_include_zero_events(app, database, purchase_form, day):
-    purchase_form.update({"purchase_date": day, "coupon_schedule": f"{day} 0", "maturity_date": day})
+    purchase_form.update({
+        "purchase_date": day, "coupons": json.dumps([{"date": day, "amount": "0"}]), "maturity_date": day,
+    })
     with app.test_client() as client:
         assert client.post("/purchases/new", data=purchase_form).status_code == 302
     assert database.list_scheduled_payments()[0]["amount"] == "0"
@@ -108,11 +114,14 @@ def test_purchase_and_coupon_boundaries_include_zero_events(app, database, purch
     ("purchase_date", "2025-02-29", "Enter a valid date"), ("purchase_date", "20240215", "Enter a valid date"),
     ("maturity_date", "2023-01-01", "Maturity date cannot be before"),
     ("maturity_date", "2027-02-30", "Enter a valid date"),
-    ("coupon_schedule", "2027-06-01 80\n2027-06-01 85", "Coupon dates must be unique"),
-    ("coupon_schedule", "2027-06-02 80", "Coupon dates must not be after maturity"),
-    ("coupon_schedule", "2024-02-30 80", "Enter a valid date"),
-    ("coupon_schedule", "2024-08-15 -1", "Amount must be nonnegative"),
-    ("coupon_schedule", "2024-08-15", "Enter each coupon"),
+    ("coupons", json.dumps([
+        {'date': '2027-06-01', 'amount': '80'},
+        {'date': '2027-06-01', 'amount': '85'},
+    ]), "Coupon dates must be unique"),
+    ("coupons", json.dumps([{'date': '2027-06-02', 'amount': '80'}]), "Coupon dates must not be after maturity"),
+    ("coupons", json.dumps([{'date': '2024-02-30', 'amount': '80'}]), "Enter a valid date"),
+    ("coupons", json.dumps([{'date': '2024-08-15', 'amount': '-1'}]), "Amount must be nonnegative"),
+    ("coupons", json.dumps([{"date": "2024-08-15"}]), "Each coupon must contain date and amount strings"),
     ("nominal_rate", "NaN", "Nominal rate must be"), ("coupon_period", "1.5", "Coupon period must be"),
     ("issue_mode", "pending", "Load issue data"),
 ])
@@ -129,12 +138,12 @@ def test_invalid_purchase_keeps_inputs_and_creates_no_records(app, database, pur
     assert database.list_scheduled_payments() == []
 
 
-@pytest.mark.parametrize("field", ["nominal", "purchase_price", "redemption_amount", "coupon_schedule"])
+@pytest.mark.parametrize("field", ["nominal", "purchase_price", "redemption_amount", "coupons"])
 @pytest.mark.parametrize("value", ["1000,005", "1000.010", "NaN", "Infinity", "abc", ""])
 def test_invalid_money_is_rejected_in_every_field(app, database, purchase_form, field, value):
     if field == "redemption_amount" and value == "":
         value = "-1"
-    purchase_form[field] = f"2027-06-01 {value}" if field == "coupon_schedule" else value
+    purchase_form[field] = json.dumps([{"date": "2027-06-01", "amount": value}]) if field == "coupons" else value
     with app.test_client() as client:
         response = client.post("/purchases/new", data=purchase_form)
     assert response.status_code == 400
@@ -143,7 +152,7 @@ def test_invalid_money_is_rejected_in_every_field(app, database, purchase_form, 
 
 
 @pytest.mark.parametrize("overrides", [
-    {"coupon_schedule": "", "maturity_date": ""}, {"maturity_date": "", "infer_maturity_from_coupons": "0"},
+    {"coupons": "[]", "maturity_date": ""}, {"maturity_date": "", "infer_maturity_from_coupons": "0"},
     {"issue_mode": "auto", "loaded_isin": "UA4000000002"},
 ])
 def test_missing_maturity_or_stale_loaded_issue_is_rejected(app, database, purchase_form, overrides):
@@ -187,8 +196,11 @@ def test_repeat_purchase_uses_saved_fields_without_resending_calendar(app, datab
 
 @pytest.mark.parametrize("field, value", [
     ("currency", "USD"), ("nominal", "500"), ("nominal_rate", "25"),
-    ("maturity_date", "2028-01-01"), ("coupon_schedule", "2027-06-01 80"),
-    ("coupon_schedule", "2027-06-01 85\n2024-08-15 81"), ("redemption_amount", "1100"),
+    ("maturity_date", "2028-01-01"), ("coupons", json.dumps([{'date': '2027-06-01', 'amount': '80'}])),
+    ("coupons", json.dumps([
+        {'date': '2027-06-01', 'amount': '85'},
+        {'date': '2024-08-15', 'amount': '81'},
+    ])), ("redemption_amount", "1100"),
 ])
 def test_conflicting_repeat_purchase_preserves_saved_calendar(app, database, purchase_form, field, value):
     purchase_form["maturity_date"] = "2027-06-01"
@@ -205,7 +217,7 @@ def test_conflicting_repeat_purchase_preserves_saved_calendar(app, database, pur
 def test_manual_form_derives_maturity_and_uses_only_requested_issue_fields(app, database, purchase_form):
     # Submit just nominal, currency and coupon rows, without optional source metadata or maturity.
     form = {key: purchase_form[key] for key in (
-        "isin", "purchase_date", "purchase_price", "quantity", "bank_name", "nominal", "currency", "coupon_schedule",
+        "isin", "purchase_date", "purchase_price", "quantity", "bank_name", "nominal", "currency", "coupons",
     )}
     form["entry_mode"] = "manual"
     with app.test_client() as client:
@@ -221,7 +233,7 @@ def test_manual_form_derives_maturity_and_uses_only_requested_issue_fields(app, 
 
 @pytest.mark.parametrize("maturity, status", [("", 400), ("2027-07-01", 302)])
 def test_manual_zero_coupon_form_requires_an_explicit_maturity(app, database, purchase_form, maturity, status):
-    purchase_form.update({"entry_mode": "manual", "coupon_schedule": "", "maturity_date": maturity})
+    purchase_form.update({"entry_mode": "manual", "coupons": "[]", "maturity_date": maturity})
     with app.test_client() as client:
         assert client.post("/purchases/new", data=purchase_form).status_code == status
     assert len(database.list_lots()) == (1 if status == 302 else 0)
@@ -237,7 +249,7 @@ def test_form_separates_purchase_fields_and_does_not_offer_source_metadata_input
     for name in ("purchase_date", "purchase_price", "quantity", "bank_name"):
         assert f'name="{name}"' in purchase
     assert 'name="purchase_date"' not in manual
-    for name in ("nominal", "currency", "coupon_schedule"):
+    for name in ("nominal", "currency", "coupons"):
         assert f'name="{name}"' in manual
     for name in ("issue_date", "nominal_rate", "coupon_period", "bond_type", "redemption_amount"):
         assert f'name="{name}"' not in html
@@ -289,9 +301,15 @@ def test_repeat_purchase_retains_saved_currency_and_independent_parameters(
     ("currency", "USD"), ("nominal", "500"), ("issue_date", "2023-02-01"),
     ("nominal_rate", "17"), ("coupon_period", "183"), ("bond_type", "Different bond type"),
     ("maturity_date", "2028-01-01"), ("redemption_amount", "1100"),
-    ("coupon_schedule", "2024-08-15 80\n2027-06-01 86"),
-    ("coupon_schedule", "2024-08-16 80\n2027-06-01 85"),
-    ("coupon_schedule", "2027-06-01 85"),
+    ("coupons", json.dumps([
+        {'date': '2024-08-15', 'amount': '80'},
+        {'date': '2027-06-01', 'amount': '86'},
+    ])),
+    ("coupons", json.dumps([
+        {'date': '2024-08-16', 'amount': '80'},
+        {'date': '2027-06-01', 'amount': '85'},
+    ])),
+    ("coupons", json.dumps([{'date': '2027-06-01', 'amount': '85'}])),
 ])
 def test_repeat_purchase_rejects_conflicts_before_mode_normalization(
     app, database, purchase_form, entry_mode, issue_mode, field, value,
@@ -315,7 +333,7 @@ def test_repeat_purchase_rejects_conflicts_before_mode_normalization(
         response = client.post("/purchases/new", data=submitted)
     html = response.get_data(as_text=True)
     assert response.status_code == 400
-    error_field = "coupon_schedule" if field == "redemption_amount" else field
+    error_field = "coupons" if field == "redemption_amount" else field
     preview = html.split('<section id="issue-preview"', 1)[1].split("</section>", 1)[0]
     assert f'id="{error_field}-error"' in preview and "conflict" in preview
     assert '<fieldset id="manual-fields" hidden disabled>' in html

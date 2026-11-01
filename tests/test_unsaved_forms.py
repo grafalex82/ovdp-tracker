@@ -50,10 +50,16 @@ def test_failed_submission_preserves_original_baseline_and_complete_draft(
 ):
     # Carry the original baseline and a separate disabled manual draft through a rejected submission.
     baseline = json.dumps([["quantity", ""], ["bank_name", '<script>alert("baseline")</script>']])
-    draft = json.dumps({"coupon_schedule": "2027-06-01 85\nunfinished", "nominal": "500", "currency": "EUR"})
+    draft = json.dumps({"coupons": [
+        {'date': '2027-06-01', 'amount': '85'},
+        {'date': 'unfinished', 'amount': ''},
+    ], "nominal": "500", "currency": "EUR"})
     values = {
         "isin": "UA4000000001", "entry_mode": "manual", "issue_mode": "manual", "nominal": "1000",
-        "currency": "USD", "coupon_schedule": "2027-06-01 80\n2028-06-01 85", "maturity_date": "",
+        "currency": "USD", "coupons": json.dumps([
+            {'date': '2027-06-01', 'amount': '80'},
+            {'date': '2028-06-01', 'amount': '85'},
+        ]), "maturity_date": "",
         "purchase_date": "2024-02-15", "purchase_price": "999,01", "quantity": "0", "bank_name": "Draft bank",
         "_unsaved_baseline": baseline, "_manual_draft": draft,
     }
@@ -74,7 +80,8 @@ def test_failed_submission_preserves_original_baseline_and_complete_draft(
         assert baseline in unescape(html) and draft in unescape(html)
         assert '<script>alert("baseline")</script>' not in html
         assert 'value="999,01"' in html and 'value="Draft bank"' in html
-        assert "2027-06-01 80\n2028-06-01 85" in html
+        coupon_field = re.search(r'id="coupons"[^>]*value="([^"]*)"', html, re.DOTALL)
+        assert json.loads(unescape(coupon_field[1])) == json.loads(values["coupons"])
         assert client.get("/").status_code == 200
     assert storage_snapshot(database) == [[], [], [], [], [], []]
 
@@ -84,7 +91,7 @@ def test_successful_submission_returns_to_unprotected_portfolio_without_repeatin
     with app.test_client() as client:
         response = client.post("/purchases/new", data={
             "isin": "UA4000000001", "entry_mode": "manual", "nominal": "1000", "currency": "EUR",
-            "coupon_schedule": "", "maturity_date": "2027-06-01", "purchase_date": "2024-02-15",
+            "coupons": "[]", "maturity_date": "2027-06-01", "purchase_date": "2024-02-15",
             "purchase_price": "950", "quantity": "3", "bank_name": "Test bank", "_unsaved_baseline": "arbitrary",
         })
         assert response.status_code == 302 and "currency=EUR" in response.location

@@ -1,7 +1,10 @@
 {% extends "base.html" %}
 {% set breadcrumbs = [('Портфель', url_for('index')), ('Добавить облигацию', none)] %}
 {% block title %}Новая покупка — Трекер ОВДП{% endblock %}
-{% block scripts %}<script src="{{ url_for('static', filename='purchase.js') }}" defer></script>{% endblock %}
+{% block scripts %}
+<script src="{{ url_for('static', filename='coupon-calendar.js') }}" defer></script>
+<script src="{{ url_for('static', filename='purchase.js') }}" defer></script>
+{% endblock %}
 {% macro field_error(name) %}
   {% if errors.get(name) %}<p class="error" id="{{ name }}-error">{{ errors[name] }}</p>{% endif %}
 {% endmacro %}
@@ -58,7 +61,7 @@
             {% for name, label in preview_fields %}
             <dt>{{ label }}</dt><dd data-issue-field="{{ name }}">{{ source_values.get(name, '') or '—' }}</dd>
             {% endfor %}
-            {% set source_coupons = source_values.get('coupon_schedule', '').splitlines() %}
+            {% set source_coupons = source_values.get('coupons', []) %}
             <dt>Количество купонов</dt><dd id="source-coupon-count">{{ source_coupons|length }}</dd>
           </dl>
           <div class="table-scroll" role="region" aria-label="Выплаты выпуска" tabindex="0">
@@ -67,9 +70,8 @@
               <thead><tr><th scope="col">Дата</th><th scope="col">Выплата</th><th scope="col">Сумма</th></tr></thead>
               <tbody id="source-payments">
                 {% for coupon in source_coupons %}
-                {% set parts = coupon.split() %}
-                <tr><td>{{ parts[0] }}</td><td>Купон</td>
-                  <td>{{ parts[1]|money }} {{ source_values.currency }}</td></tr>
+                <tr><td>{{ coupon.date }}</td><td>Купон</td>
+                  <td>{{ coupon.amount|money }} {{ source_values.currency }}</td></tr>
                 {% endfor %}
                 {% if source_values %}
                 <tr><td>{{ source_values.maturity_date }}</td><td>Погашение</td>
@@ -83,7 +85,7 @@
           {% endfor %}
           {% if not manual or existing %}{{ field_error('maturity_date') }}{% endif %}
           {% if existing %}
-            {% for name in ['nominal', 'currency', 'coupon_schedule'] %}{{ field_error(name) }}{% endfor %}
+            {% for name in ['nominal', 'currency', 'coupons'] %}{{ field_error(name) }}{% endfor %}
           {% endif %}
         </section>
         <fieldset id="manual-fields" {% if not manual or existing %}hidden disabled{% endif %}>
@@ -102,18 +104,13 @@
             {% endfor %}
           </select>
           {% if not existing %}{{ field_error('currency') }}{% endif %}
-          <p>Количество купонов: <output id="coupon-count">0</output></p>
-          <label for="coupon_schedule">Купоны: дата и сумма на одну облигацию</label>
-          <textarea id="coupon_schedule" name="coupon_schedule" rows="6"
-                    {% if errors.get('coupon_schedule') %}aria-invalid="true"{% endif %}
-                    aria-describedby="coupon_schedule-hint">{{ values.get('coupon_schedule', '') }}</textarea>
-          <p id="coupon_schedule-hint" class="hint">По одной выплате в строке: ГГГГ-ММ-ДД сумма.
-            Например: 2027-06-01 85,50. Включайте прошлые даты.</p>
-          {% if not existing %}{{ field_error('coupon_schedule') }}{% endif %}
+          {% include '_coupon_editor.html' %}
           <div id="manual-maturity">
             {{ field('maturity_date', 'Дата погашения', 'date', show_error=false) }}
             <p class="hint">Укажите дату погашения для облигации без купонов.</p>
           </div>
+          <p id="inferred-maturity" hidden>Погашение по последнему купону:
+            <output id="inferred-maturity-date"></output></p>
           {% if manual and not existing %}{{ field_error('maturity_date') }}{% endif %}
           <p class="hint">При наличии купонов погашение определяется последней купонной датой.
             Сумма погашения равна номиналу.</p>

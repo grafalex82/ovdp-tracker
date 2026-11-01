@@ -1,0 +1,26 @@
+<section data-coupon-editor aria-label="Купонный календарь">
+  <p>Количество купонов: <output id="coupon-count">0</output></p>
+  {% set coupons = values.get('coupons', []) %}
+  <input type="hidden" id="coupons" name="coupons" data-coupon-state data-unsaved-ignore
+         value="{% if coupons is string %}{{ coupons }}{% else %}{{ coupons|tojson|forceescape }}{% endif %}">
+  <div data-coupon-controls>
+    <div data-coupon-list class="coupon-list"></div>
+    <div class="calendar-actions">
+      <button type="button" data-coupon-add>Добавить купон</button>
+      <button type="button" data-coupon-sort>Сортировать по дате</button>
+    </div>
+  </div>
+  <p id="coupons-hint" class="hint">Укажите дату и сумму каждого купона на одну облигацию.
+    Можно вводить даты с клавиатуры или выбирать в календаре. Включайте прошлые даты;
+    суммы могут различаться, нулевой купон допустим.</p>
+  {% if not existing %}{{ field_error('coupons') }}{% endif %}
+  <template data-coupon-template>
+    <div class="coupon-row">
+      <label>Дата купона <input type="date" required data-coupon-date data-unsaved-value="coupon-date"></label>
+      <label>Сумма на одну облигацию
+        <input type="text" inputmode="decimal" required data-coupon-amount data-unsaved-value="coupon-amount">
+      </label>
+      <button type="button" data-coupon-remove>Удалить купон</button>
+    </div>
+  </template>
+</section>

@@ -1,5 +1,6 @@
 """Verify ISIN positions, purchase details, shared calendars and the save-to-portfolio flow."""
 
+import json
 from datetime import date
 from html import unescape
 
@@ -43,7 +44,10 @@ def saved_purchase(database, lot):
 def form(issue_data, lot_data):
     return {
         **issue_data, **lot_data, "quantity": "3", "purchase_price": "1000,01", "bank_name": "Банк А",
-        "coupon_schedule": "2027-06-01 80\n2024-08-15 80", "issue_mode": "manual", "infer_maturity_from_coupons": "0",
+        "coupons": json.dumps([
+            {'date': '2027-06-01', 'amount': '80'},
+            {'date': '2024-08-15', 'amount': '80'},
+        ]), "issue_mode": "manual", "infer_maturity_from_coupons": "0",
     }
 
 
@@ -423,7 +427,10 @@ def test_position_payments_preserve_purchase_rights_and_independent_facts(app, d
 
 @pytest.mark.parametrize("field, value", [
     ("currency", "USD"), ("nominal", "2000"), ("maturity_date", "2028-06-01"),
-    ("coupon_schedule", "2027-06-01 85\n2024-08-15 80"),
+    ("coupons", json.dumps([
+        {'date': '2027-06-01', 'amount': '85'},
+        {'date': '2024-08-15', 'amount': '80'},
+    ])),
 ])
 def test_conflicting_repeat_purchase_cannot_change_position(app, database, form, field, value):
     # Save the shared issue before attempting to replace its common fields through a second purchase.

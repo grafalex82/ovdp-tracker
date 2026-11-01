@@ -58,21 +58,21 @@ def issue_form_values(issue: dict, events: list[dict]) -> dict:
     """Convert shared issue metadata and payment events into purchase-form values.
 
     Read the metadata listed in ISSUE_FIELDS from issue, convert values to strings and
-    replace None with an empty string. Sort events by planned_date and format each coupon
-    as a YYYY-MM-DD amount line in coupon_schedule, including historical and zero coupons.
+    replace None with an empty string. Return coupons as date/amount dictionaries sorted
+    by planned_date, including historical and zero coupons. Keep monetary amounts as strings.
     Copy the redemption amount separately and set infer_maturity_from_coupons to "0"
     because the issue already supplies its own maturity date.
 
-    Return a new flat dictionary suitable for form display or validate_issue(). Expect
+    Return a new dictionary suitable for form display or validate_issue(). Expect
     complete metadata and a calendar with one redemption; this function does not validate
     them. The supplied issue and events are not modified.
     """
     return {
         **{key: "" if issue[key] is None else str(issue[key]) for key in ISSUE_FIELDS},
-        "coupon_schedule": "\n".join(
-            f'{event["planned_date"]} {event["amount"]}'
+        "coupons": [
+            {"date": event["planned_date"], "amount": event["amount"]}
             for event in sorted(events, key=lambda event: event["planned_date"]) if event["kind"] == "coupon"
-        ),
+        ],
         "redemption_amount": next(event["amount"] for event in events if event["kind"] == "redemption"),
         "infer_maturity_from_coupons": "0",
     }
@@ -105,11 +105,12 @@ def issue_signature(issue: dict, events: list[dict]) -> tuple:
 def validate_issue(values: dict) -> dict:
     """Validate form-shaped bond values and return canonical issue fields with a supported calendar.
 
-    Read shared metadata and coupon_schedule from values without requiring purchase fields.
+    Read shared metadata and coupons from values without requiring purchase fields.
     Normalize ISIN casing and surrounding whitespace, require a nonempty identifier and
     a supported currency, and parse positive nominal and redemption amounts without rounding.
     Default an omitted redemption amount to nominal. Monetary values allow at most two
-    decimal places; each nonblank coupon line must contain an ISO date and a nonnegative amount.
+    decimal places; coupons must be a list of dictionaries with ISO date and nonnegative
+    amount strings. Empty or malformed rows are rejected instead of silently discarded.
 
     Validate issue and maturity dates, unique coupon dates and the maturity boundary.
     An empty maturity date can be inferred from the latest coupon only in manual mode
@@ -146,21 +147,24 @@ def validate_issue(values: dict) -> dict:
         except ValueError as error:
             errors[field] = str(error)
 
-    # Parse every coupon as its own date and amount, including historical and zero events.
+    # Validate structured coupons without parsing a separate date-and-amount text format.
     coupons = []
-    for row in values.get("coupon_schedule", "").splitlines():
-        if not row.strip():
-            continue
+    rows = values.get("coupons", [])
+    if not isinstance(rows, list):
+        errors["coupons"] = "Coupons must be a list of date and amount objects."
+        rows = []
+    for row in rows:
         try:
-            parts = row.split()
-            if len(parts) != 2:
-                raise ValueError("Enter each coupon as YYYY-MM-DD followed by its amount.")
-            day, amount = parse_date(parts[0]), parse_money(parts[1])
+            if not isinstance(row, dict) or set(row) != {"date", "amount"}:
+                raise ValueError("Each coupon must contain date and amount strings.")
+            if not isinstance(row["date"], str) or not isinstance(row["amount"], str):
+                raise ValueError("Each coupon must contain date and amount strings.")
+            day, amount = parse_date(row["date"]), parse_money(row["amount"])
             if amount < 0:
                 raise ValueError("Amount must be nonnegative.")
             coupons.append({"kind": "coupon", "planned_date": day.isoformat(), "amount": str(amount)})
         except ValueError as error:
-            errors["coupon_schedule"] = str(error)
+            errors["coupons"] = str(error)
 
     # Validate issue dates and allow maturity inference only for a manual draft.
     for field in ("maturity_date", "issue_date"):
@@ -178,9 +182,9 @@ def validate_issue(values: dict) -> dict:
     if issue.get("issue_date", "") > issue.get("maturity_date", "9999"):
         errors["issue_date"] = "Issue date cannot be after maturity."
     if len(coupons) != len({event["planned_date"] for event in coupons}):
-        errors["coupon_schedule"] = "Coupon dates must be unique."
+        errors["coupons"] = "Coupon dates must be unique."
     if any(event["planned_date"] > issue.get("maturity_date", "9999") for event in coupons):
-        errors["coupon_schedule"] = "Coupon dates must not be after maturity."
+        errors["coupons"] = "Coupon dates must not be after maturity."
 
     # Preserve optional manual metadata and validate available source values.
     issue["bond_type"] = values.get("bond_type", "").strip()
@@ -223,7 +227,7 @@ def validate_imported_issue(data: dict) -> dict:
     # Reject source calendars that cannot be represented by the current application model.
     issue, events = data["issue"], data["payments"]
     if any(event["kind"] not in ("coupon", "redemption") for event in events):
-        raise IssueValidationError({"coupon_schedule": "Unsupported payment type."})
+        raise IssueValidationError({"coupons": "Unsupported payment type."})
     redemptions = [event for event in events if event["kind"] == "redemption"]
     if len(redemptions) != 1 or redemptions[0]["planned_date"] != issue["maturity_date"]:
         raise IssueValidationError({"maturity_date": "Exactly one redemption matching maturity is required."})
@@ -343,7 +347,7 @@ def create_purchase(database: Database, values: dict, today: date | None = None)
             expected = [(event["kind"], event["planned_date"], parse_money(event["amount"])) for event in original]
             received = [(event["kind"], event["planned_date"], parse_money(event["amount"])) for event in events]
             if sorted(expected) != sorted(received):
-                errors["coupon_schedule"] = "Calendar dates or amounts conflict with the existing ISIN."
+                errors["coupons"] = "Calendar dates or amounts conflict with the existing ISIN."
             if errors:
                 raise PurchaseValidationError(errors)
         else:

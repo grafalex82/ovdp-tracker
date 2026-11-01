@@ -6,7 +6,7 @@ const mode = document.getElementById("issue_mode");
 const loadedIsin = document.getElementById("loaded_isin");
 const issueToken = document.getElementById("issue_token");
 const manualFields = document.getElementById("manual-fields");
-const schedule = document.getElementById("coupon_schedule");
+const schedule = document.getElementById("coupons");
 const maturity = document.getElementById("maturity_date");
 const status = document.getElementById("lookup-status");
 const preview = document.getElementById("issue-preview");
@@ -39,12 +39,15 @@ function displayDate(value) {
 
 
 // Recount manual coupons and require a separate maturity only for an empty schedule.
-function updateCalendar() {
-  const rows = schedule.value.split(/\r?\n/).filter(row => row.trim());
+function updateCalendar(rows = calendar.getCoupons()) {
   document.getElementById("coupon-count").value = String(rows.length);
   document.getElementById("manual-maturity").hidden = rows.length > 0;
   maturity.disabled = manualFields.disabled || rows.length > 0;
   maturity.required = !maturity.disabled;
+  const dates = rows.map(row => row.date).filter(day => /^\d{4}-\d{2}-\d{2}$/.test(day));
+  const lastDate = dates.sort().at(-1);
+  document.getElementById("inferred-maturity").hidden = rows.length === 0;
+  document.getElementById("inferred-maturity-date").value = displayDate(lastDate);
 }
 
 
@@ -59,12 +62,9 @@ function renderPreview() {
     element.textContent = name === "nominal" ? displayMoney(value) : (value || "—");
     if (name.endsWith("_date")) element.textContent = displayDate(value);
   }
-  const coupons = sourceValues.coupon_schedule.split(/\r?\n/).filter(row => row.trim());
+  const coupons = sourceValues.coupons;
   document.getElementById("source-coupon-count").textContent = String(coupons.length);
-  const events = coupons.map(row => {
-    const [day, amount] = row.trim().split(/\s+/);
-    return [day, "Купон", amount];
-  });
+  const events = coupons.map(row => [row.date, "Купон", row.amount]);
   events.push([sourceValues.maturity_date, "Погашение", sourceValues.redemption_amount]);
   const table = document.getElementById("source-payments");
   table.replaceChildren();
@@ -99,7 +99,7 @@ function snapshotSource() {
   if (!sourceIsin) return "{}";
   const fields = [
     "isin", "nominal", "currency", "issue_date", "maturity_date", "nominal_rate", "coupon_period", "bond_type",
-    "coupon_schedule", "redemption_amount",
+    "coupons", "redemption_amount",
   ];
   return JSON.stringify(fields.map(name => [name, sourceValues[name] || ""]));
 }
@@ -219,8 +219,8 @@ function changeEntryMode() {
 // Retain disabled manual fields across submission errors without submitting them as shared issue overrides.
 function preserveManualDraft() {
   const draft = {};
-  for (const element of manualFields.querySelectorAll("input, select, textarea")) {
-    draft[element.name] = element.value;
+  for (const element of manualFields.querySelectorAll("input[name], select[name], textarea[name]")) {
+    draft[element.name] = element === schedule ? calendar.getCoupons() : element.value;
   }
   document.getElementById("manual-draft").value = JSON.stringify(draft);
 }
@@ -240,15 +240,18 @@ function restoreManualDraft() {
   if (!draft || typeof draft !== "object") return;
 
   // Restore only the actual manual controls, including values hidden in NBU or existing-issue mode.
-  for (const element of manualFields.querySelectorAll("input, select, textarea")) {
-    if (typeof draft[element.name] === "string") element.value = draft[element.name];
+  for (const element of manualFields.querySelectorAll("input[name], select[name], textarea[name]")) {
+    if (element === schedule) {
+      if (Array.isArray(draft.coupons)) element.value = JSON.stringify(draft.coupons);
+    } else if (typeof draft[element.name] === "string") element.value = draft[element.name];
   }
 }
 
 isin.addEventListener("input", changeIsin);
-schedule.addEventListener("input", updateCalendar);
+document.querySelector("[data-coupon-editor]").addEventListener("couponschange", event => updateCalendar(event.detail));
 for (const radio of form.querySelectorAll('[name="entry_mode"]')) radio.addEventListener("change", changeEntryMode);
 document.getElementById("lookup-retry").addEventListener("click", loadIssue);
 form.addEventListener("submit", preserveManualDraft);
 restoreManualDraft();
+const [calendar] = initializeCouponEditors();
 updateMode();

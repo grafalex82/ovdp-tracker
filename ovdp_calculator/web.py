@@ -2,6 +2,7 @@
 
 from datetime import date
 from functools import wraps
+import json
 
 from flask import Blueprint, abort, current_app, jsonify, redirect, render_template, request, url_for
 from itsdangerous import BadSignature
@@ -52,7 +53,7 @@ def new_purchase(database: Database):
     today = date.today()
     values = {
         "purchase_date": today.isoformat(), "nominal": "1000", "currency": "UAH",
-        "issue_mode": "pending", "entry_mode": "nbu",
+        "issue_mode": "pending", "entry_mode": "nbu", "coupons": [],
     }
     errors = {}
     status = 200
@@ -61,6 +62,11 @@ def new_purchase(database: Database):
     if request.method == "POST":
         values = request.form.to_dict()
         try:
+            if "coupons" in values:
+                try:
+                    values["coupons"] = json.loads(values["coupons"])
+                except (ValueError, RecursionError) as error:
+                    raise PurchaseValidationError({"coupons": "Enter a valid JSON coupon array."}) from error
             values = _prepare_purchase_values(database, values)
             purchase = create_purchase(database, values, today)
         except PurchaseValidationError as error:
@@ -75,7 +81,7 @@ def new_purchase(database: Database):
 
     # Restore disabled saved fields for display after a rejected repeat purchase.
     values.setdefault("entry_mode", "manual" if values.get("issue_mode") == "manual" else "nbu")
-    source_values = values if values.get("issue_mode") == "auto" else {}
+    source_values = values if values.get("issue_mode") == "auto" and isinstance(values.get("coupons"), list) else {}
     issue = database.get_issue_by_isin(values.get("isin", ""))
     if issue:
         defaults = issue_form_values(issue, database.list_scheduled_payments(issue["id"]))
@@ -120,7 +126,7 @@ def _prepare_purchase_values(database: Database, values: dict) -> dict:
 
     # Limit the explicit manual form to nominal, currency and coupon dates with their own amounts.
     if values.get("entry_mode") == "manual" and values.get("issue_mode") != "existing":
-        coupons = [row for row in values.get("coupon_schedule", "").splitlines() if row.strip()]
+        coupons = values.get("coupons", [])
         return {
             **values, "issue_mode": "manual", "infer_maturity_from_coupons": "1" if coupons else "0",
             "maturity_date": "" if coupons else values.get("maturity_date", ""),
