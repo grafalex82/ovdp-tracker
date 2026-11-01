@@ -32,4 +32,7 @@
           <a href="{{ url_for('purchases.purchase_details', lot_id=lot.id) }}">Отмена</a>
         </div>
       </form>
+      <h2>Удаление покупки</h2>
+      <p class="hint">Удаление покупки и всей её истории необратимо. Потребуется отдельное подтверждение.</p>
+      <p><a class="button danger" href="{{ url_for('purchases.delete_purchase', lot_id=lot.id) }}">Удалить покупку</a></p>
 {% endblock %}

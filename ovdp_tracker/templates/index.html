@@ -14,6 +14,7 @@
         {% endif %}
       </div>
       {% if saved %}<p role="status" class="success">Покупка сохранена.</p>{% endif %}
+      {% if deleted %}<p role="status" class="success">Покупка и её история удалены.</p>{% endif %}
       <div class="portfolio-toolbar">
       <nav aria-label="Позиции портфеля" class="actions">
         {% if history %}

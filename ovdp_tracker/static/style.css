@@ -126,6 +126,8 @@ button, .button {
 button:hover, .button:hover { background: #eef0f4; text-decoration: none; }
 .primary { border-color: var(--accent); color: #fff; background: var(--accent); font-weight: 600; }
 .primary:hover { border-color: #1d4ed8; background: #1d4ed8; }
+.danger { border-color: var(--error); color: var(--error); }
+.danger:hover { border-color: var(--error); background: #fff0f0; }
 button:disabled { opacity: 0.55; cursor: default; }
 button:disabled:hover { background: var(--surface); }
 button.primary:disabled:hover { background: var(--accent); }

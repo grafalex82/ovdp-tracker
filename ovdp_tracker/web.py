@@ -217,6 +217,7 @@ def render_portfolio(database: Database, *, closed: bool = False):
     return render_template(
         "index.html", positions=list_positions(database, currency=currency, closed=closed), history=closed,
         currency=currency, currencies=CURRENCIES, saved=request.args.get("saved") == "1" and not closed,
+        deleted=request.args.get("deleted") == "1",
     )
 
 
@@ -246,6 +247,38 @@ def purchase_details(database: Database, lot_id: int):
 
     # Present the same stored fields and current state as the portfolio list.
     return render_template("purchase_details.html", lot=lot)
+
+
+@purchase_pages.route("/purchases/<int:lot_id>/delete", methods=["GET", "POST"])
+@with_database
+def delete_purchase(database: Database, lot_id: int):
+    """Show the irreversible deletion summary for lot_id and delete its history only on explicit confirmation."""
+
+    # Resolve the selected purchase and summarize the history that would be removed.
+    lot = get_lot_details(database, lot_id)
+    if lot is None:
+        abort(404, description="Purchase not found.")
+    error, status = "", 200
+
+    # Require the confirmation action before atomically removing only this purchase's history.
+    if request.method == "POST":
+        if request.form.get("confirm") != "delete":
+            error, status = user_message("Confirm deletion of the complete purchase history."), 400
+        else:
+            try:
+                removed = database.delete_lot(lot_id)
+            except DatabaseError:
+                current_app.logger.exception("Could not delete the purchase.")
+                error, status = user_message("Could not delete the purchase. Retry the operation."), 503
+            else:
+                if not removed:
+                    abort(404, description="Purchase not found.")
+                return redirect(url_for("index", deleted="1", currency=lot["currency"]))
+
+    # Keep cancellation and retry available without changing stored data on a rejected request.
+    return render_template(
+        "delete_purchase.html", lot=lot, error=error, actual_count=len(database.list_actual_payments(lot_id)),
+    ), status
 
 
 @purchase_pages.route("/purchases/<int:lot_id>/sales/new", methods=["GET", "POST"])

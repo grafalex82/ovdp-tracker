@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% set breadcrumbs = [('Портфель', url_for('index', currency=lot.currency)),
+  (lot.isin, url_for('purchases.issue_details', isin=lot.isin)),
+  ('Покупка №' ~ lot.id, url_for('purchases.purchase_details', lot_id=lot.id)), ('Удаление покупки', none)] %}
+{% block title %}Удаление покупки №{{ lot.id }} — {{ lot.isin }} — ОВДП Трекер{% endblock %}
+{% block content %}
+      <div class="page-heading">
+        <div><h1>Удалить покупку №{{ lot.id }}?</h1><p class="subtitle">{{ lot.isin }}</p></div>
+      </div>
+      {% if error %}<p role="alert" class="error">{{ error }}</p>{% endif %}
+      <dl class="purchase-fields">
+        <div><dt>Банк</dt><dd>{{ lot.bank_name }}</dd></div>
+        <div><dt>Дата покупки</dt><dd>{{ lot.purchase_date }}</dd></div>
+        <div><dt>Куплено облигаций</dt><dd>{{ lot.quantity }}</dd></div>
+        <div><dt>Стоимость покупки</dt><dd>{{ lot.purchase_total|money }} {{ lot.currency }}</dd></div>
+        <div><dt>Продажи к удалению</dt><dd>{{ lot.sales|length }}</dd></div>
+        <div><dt>Подтверждения выплат к удалению</dt>
+          <dd>{{ actual_count }}</dd></div>
+      </dl>
+      <p id="delete-warning">Удаление необратимо: покупка, все её продажи и фактические подтверждения выплат
+        будут удалены навсегда и исключены из расчётов. Восстановить историю покупки в приложении нельзя.</p>
+      <p class="hint">Общие реквизиты ISIN, календарь выпуска, банки и другие покупки сохранятся.
+        После удаления последней покупки позиция исчезнет из портфеля.</p>
+      <form method="post" action="{{ url_for('purchases.delete_purchase', lot_id=lot.id) }}"
+        aria-describedby="delete-warning">
+        <div class="form-actions">
+          <a class="button" href="{{ url_for('purchases.edit_purchase', lot_id=lot.id) }}">Отмена</a>
+          <button type="submit" name="confirm" value="delete" class="danger">Удалить покупку и всю её историю</button>
+        </div>
+      </form>
+{% endblock %}

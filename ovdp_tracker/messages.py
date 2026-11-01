@@ -50,6 +50,9 @@ _MESSAGES = {
     "Enter a positive sale price with at most two decimal places.":
         "Введите положительную цену с не более чем двумя знаками после разделителя.",
     "Purchase not found.": "Покупка не найдена.",
+    "Confirm deletion of the complete purchase history.": "Подтвердите удаление всей истории покупки.",
+    "Could not delete the purchase. Retry the operation.":
+        "Не удалось удалить покупку. Изменения не сохранены; повторите попытку.",
     "Sale date cannot precede the purchase.": "Дата продажи не может быть раньше даты покупки.",
     "Cannot sell bonds after their actual redemption.": "Нельзя продать облигации после фактического погашения.",
     "Sale exceeds the available quantity in the purchase history.":

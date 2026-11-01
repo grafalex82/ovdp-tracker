@@ -30,7 +30,9 @@
           <dd>{{ lot.schedule|selectattr('kind', 'equalto', 'coupon')|list|length }}</dd></div>
         <div><dt>Дата погашения</dt><dd>{{ lot.maturity_date }}</dd></div>
       </dl>
-      <p><a class="button" href="{{ url_for('purchases.edit_purchase', lot_id=lot.id) }}">Редактировать покупку</a></p>
+      <div class="form-actions">
+        <a class="button" href="{{ url_for('purchases.edit_purchase', lot_id=lot.id) }}">Редактировать покупку</a>
+      </div>
       <h2>Продажи</h2>
       {% if lot.remaining_quantity > 0 %}
       <p><a class="button" href="{{ url_for('purchases.new_sale', lot_id=lot.id) }}">Добавить продажу</a></p>
