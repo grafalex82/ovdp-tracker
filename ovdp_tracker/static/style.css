@@ -178,6 +178,12 @@ tbody tr:hover { background: var(--row-hover); }
 .number, #source-payments td:last-child,
 .positions-table :is(th, td):is(:nth-child(2), :nth-child(3), :nth-child(6)) { text-align: right; }
 
+.calendar-table th { min-width: 110px; white-space: normal; }
+.calendar-table td { vertical-align: top; }
+.calendar-table td:last-child { min-width: 260px; white-space: normal; }
+.payment-purchases { display: grid; gap: 14px; margin: 0; padding: 0; list-style: none; }
+.payment-purchases li + li { padding-top: 14px; border-top: 1px solid var(--border); }
+
 .purchase-fields {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));

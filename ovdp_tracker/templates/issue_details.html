@@ -26,24 +26,57 @@
         <div><dt>Вид облигации</dt><dd>{{ position.bond_type or 'Не указан' }}</dd></div>
         <div><dt>Общее количество купонов</dt>
         <dd>{{ position.schedule|selectattr('kind', 'equalto', 'coupon')|list|length }}</dd></div>
+        <div><dt>Осталось купонов</dt><dd>{{ position.remaining_coupon_count }}</dd></div>
         <div><dt>Дата погашения</dt><dd>{{ position.maturity_date }}</dd></div>
       </dl>
+      <p class="hint">Оставшиеся купоны — общие даты от сегодня включительно с положительной неподтверждённой
+        выплатой хотя бы одной действующей покупки. Каждая дата считается один раз.</p>
       <h2>Общий календарь выпуска</h2>
       <p class="hint">Календарь един для всех покупок ISIN, включая даты до покупки.
-        Каждая дата хранит свою сумму на одну облигацию; погашение показано отдельно от купона.</p>
+        Количество рассчитано по владению на дату события: покупка, купон, продажи, погашение.
+        Общая плановая сумма включает все причитающиеся покупки, в том числе подтверждённые.
+        Фактические дата и сумма показаны отдельно для каждой покупки;
+        плановая дата сама по себе не подтверждает получение денег.</p>
       <div class="table-scroll" role="region" aria-label="Календарь выплат" tabindex="0">
-        <table>
+        <table class="calendar-table">
           <caption>Расписание {{ position.isin }} · {{ position.currency }}</caption>
-          <thead><tr><th scope="col">Дата</th><th scope="col">Выплата</th>
-            <th scope="col" class="number">На одну облигацию, {{ position.currency }}</th></tr></thead>
+          <thead><tr><th scope="col">Дата</th><th scope="col">Тип выплаты</th>
+            <th scope="col" class="number">На одну облигацию, {{ position.currency }}</th>
+            <th scope="col" class="number">Количество на дату события</th>
+            <th scope="col" class="number">Общая плановая сумма, {{ position.currency }}</th>
+            <th scope="col">Выплаты покупок</th></tr></thead>
           <tbody>
-            {% for event in position.schedule %}
+            {% for event in position.calendar %}
             <tr data-event-id="{{ event.id }}">
               <td>{{ event.planned_date }}</td>
               <td>{% if event.kind == 'coupon' %}Купон{% else %}Погашение{% endif %}</td>
               <td class="number">{{ event.amount|money }}</td>
+              <td class="number">{{ event.quantity }}</td>
+              <td class="number">{{ event.planned_amount|money }}</td>
+              <td>
+                {% if event.purchases %}
+                <ul class="payment-purchases">
+                  {% for purchase in event.purchases %}
+                  <li data-lot-id="{{ purchase.lot_id }}" data-payment-id="{{ event.id }}">
+                    <a href="{{ url_for('purchases.purchase_details', lot_id=purchase.lot_id) }}">
+                      Покупка №{{ purchase.lot_id }}</a>
+                    <div>{{ purchase.quantity }} шт. · План: {{ purchase.planned_amount|money }}
+                      {{ position.currency }}</div>
+                    {% if purchase.actual %}
+                    <div class="hint">Подтверждено · Факт: {{ purchase.actual.amount|money }}
+                      {{ position.currency }} · {{ purchase.actual.actual_date }}</div>
+                    {% elif event.kind == 'coupon' and event.amount|money == '0,00' %}
+                    <div class="hint">Нулевой купон — подтверждение не требуется</div>
+                    {% else %}
+                    <div class="hint">Не подтверждено</div>
+                    {% endif %}
+                  </li>
+                  {% endfor %}
+                </ul>
+                {% else %}Причитающихся выплат нет.{% endif %}
+              </td>
             </tr>
-            {% else %}<tr><td colspan="3">Расписание пока не заполнено.</td></tr>{% endfor %}
+            {% else %}<tr><td colspan="6">Расписание пока не заполнено.</td></tr>{% endfor %}
           </tbody>
         </table>
       </div>
@@ -70,12 +103,4 @@
           </tbody>
         </table>
       </div>
-      <h2>Причитающиеся выплаты покупок</h2>
-      <p class="hint">План учитывает дату покупки и продажи.
-        Фактические дата и сумма относятся только к указанной покупке и не меняют общий календарь.
-        Плановая дата сама по себе не подтверждает получение денег.</p>
-      {% for lot in position.lots %}
-      <h3><a href="{{ url_for('purchases.purchase_details', lot_id=lot.id) }}">Покупка №{{ lot.id }}</a></h3>
-      {% include "_purchase_payments.html" %}
-      {% endfor %}
 {% endblock %}

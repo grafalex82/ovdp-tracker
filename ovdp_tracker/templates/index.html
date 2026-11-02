@@ -44,7 +44,7 @@
           <thead>
             <tr><th scope="col">ISIN</th><th scope="col">Количество</th>
               <th scope="col">Купон</th>
-              <th scope="col">Дата купона</th><th scope="col">Погашение</th>
+              <th scope="col">Дата купона</th><th scope="col">Осталось купонов</th><th scope="col">Погашение</th>
               <th scope="col">Доходность</th></tr>
           </thead>
           <tbody>
@@ -58,6 +58,7 @@
               {% else %}
               <td>Нет будущего купона</td><td>—</td>
               {% endif %}
+              <td>{{ position.remaining_coupon_count }}</td>
               <td>{{ position.maturity_date }}</td>
               <td>{% if position.nominal_rate %}{{ position.nominal_rate|replace('.', ',') }}%
                 {% else %}Не указана{% endif %}</td>

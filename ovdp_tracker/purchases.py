@@ -247,7 +247,8 @@ def validate_purchase(values: dict, today: date) -> dict:
     Require a completed manual, automatic or existing-issue mode; automatic drafts must
     have loaded_isin matching the normalized current identifier.
 
-    Use today as the latest allowed purchase date and reject a purchase after maturity.
+    Temporarily allow future purchase dates while still rejecting a purchase after maturity.
+    Keep today available for restoring the date cutoff without changing callers.
     Return canonical issue fields, payments and independent purchase fields in one new
     dictionary. Raise PurchaseValidationError with field messages when either the issue
     or purchase is invalid. This function validates values without persisting them.
@@ -289,8 +290,6 @@ def validate_purchase(values: dict, today: date) -> dict:
         purchase["purchase_date"] = parse_date(values.get("purchase_date", "").strip()).isoformat()
     except ValueError as error:
         errors["purchase_date"] = str(error)
-    if purchase.get("purchase_date", "") > today.isoformat():
-        errors["purchase_date"] = "Purchase date cannot be in the future; planned purchases are not supported."
     maturity_date = purchase.get("maturity_date", values.get("maturity_date", "").strip())
     if "maturity_date" not in errors and maturity_date and maturity_date < purchase.get("purchase_date", ""):
         errors["maturity_date"] = "Maturity date cannot be before the purchase date."
@@ -304,8 +303,8 @@ def create_purchase(database: Database, values: dict, today: date | None = None)
 
     Use database to resolve the ISIN supplied in values and perform all checks and writes
     in one transaction. For an existing issue, supply its saved metadata and calendar as
-    defaults before validating submitted values. Use today for the purchase-date cutoff,
-    or the current local date when today is omitted.
+    defaults before validating submitted values. Pass today, or the current local date
+    when omitted, to validation; the future-date cutoff is temporarily disabled.
 
     Call validate_purchase(), then split its result into issue metadata, payment events
     and independent purchase fields. Reject conflicts with an existing issue's metadata

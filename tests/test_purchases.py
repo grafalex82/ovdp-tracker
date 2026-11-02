@@ -187,7 +187,7 @@ def test_zero_coupon_issue_requires_only_redemption(app, database, purchase_form
     assert event["kind"] == "redemption" and event["amount"] == "1000"
 
 
-@pytest.mark.parametrize("day", ["2024-02-15", "2026-10-31"])
+@pytest.mark.parametrize("day", ["2024-02-15", "2026-10-31", "2026-11-01"])
 def test_purchase_and_coupon_boundaries_include_zero_events(app, database, purchase_form, day):
     purchase_form.update({
         "purchase_date": day, "coupons": json.dumps([{"date": day, "amount": "0"}]), "maturity_date": day,
@@ -205,7 +205,6 @@ def test_purchase_and_coupon_boundaries_include_zero_events(app, database, purch
       for value in ("0", "-1", "1,5", "1.0", "abc", "")],
     ("nominal", "0", "Сумма должна быть больше нуля"), ("purchase_price", "-1", "Сумма должна быть больше нуля"),
     ("redemption_amount", "0", "Сумма должна быть больше нуля"),
-    ("purchase_date", "2026-11-01", "плановые покупки пока не поддерживаются"),
     ("purchase_date", "2025-02-29", "Введите корректную дату"),
     ("purchase_date", "20240215", "Введите корректную дату"),
     ("maturity_date", "2023-01-01", "Дата погашения не может быть раньше"),

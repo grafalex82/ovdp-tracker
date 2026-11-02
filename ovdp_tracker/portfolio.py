@@ -81,15 +81,40 @@ def _describe_position(database: Database, issue: dict, lots: list[dict], today:
     coupons = [
         payment for purchase in purchases if not purchase["closed"] for payment in purchase["payments"]
         if payment["kind"] == "coupon" and payment["planned_date"] >= today.isoformat()
-        and parse_money(payment["amount"]) > 0 and payment["actual"] is None
+        and parse_money(payment["planned_amount"]) > 0 and payment["actual"] is None
     ]
     next_coupon = min(coupons, key=lambda event: event["planned_date"], default=None)
+    remaining_coupon_count = len({payment["planned_date"] for payment in coupons})
 
     # Keep shared issue fields and the full calendar separate from purchase-specific values.
     return {
         **issue, "lots": purchases, "remaining_quantity": remaining, "closed": remaining == 0,
         "schedule": purchases[0]["schedule"] if purchases else [], "next_coupon": next_coupon,
+        "remaining_coupon_count": remaining_coupon_count, "calendar": _describe_calendar(purchases),
     }
+
+
+def _describe_calendar(purchases: list[dict]) -> list[dict]:
+    # Retain the complete shared calendar, including events with no entitled purchases.
+    groups = {
+        event["id"]: {**event, "quantity": 0, "purchases": []}
+        for event in (purchases[0]["schedule"] if purchases else [])
+    }
+
+    # Aggregate historical entitlements without removing confirmed or subsequently closed purchases.
+    for purchase in purchases:
+        for payment in purchase["payments"]:
+            group = groups[payment["id"]]
+            group["quantity"] += payment["quantity"]
+            group["purchases"].append({
+                "lot_id": purchase["id"], "quantity": payment["quantity"],
+                "planned_amount": payment["planned_amount"], "actual": payment["actual"],
+            })
+
+    # Multiply the shared unit amount by the full count, keeping exact cents and separate actual receipts.
+    for group in groups.values():
+        group["planned_amount"] = str(operation_amount(parse_money(group["amount"]), group["quantity"]))
+    return list(groups.values())
 
 
 def list_positions(

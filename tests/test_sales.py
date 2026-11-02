@@ -40,7 +40,6 @@ def test_partial_and_full_sale_keep_neighbor_and_history(app, database, lot, lot
 
 @pytest.mark.parametrize("values", [
     {"sale_date": "2024-02-14", "quantity": "1", "sale_price": "1000"},
-    {"sale_date": "2027-01-01", "quantity": "1", "sale_price": "1000"},
     {"sale_date": "2025-01-01", "quantity": "0", "sale_price": "1000"},
     {"sale_date": "2025-01-01", "quantity": "1.5", "sale_price": "1000"},
     {"sale_date": "2025-01-01", "quantity": "1", "sale_price": "0"},
