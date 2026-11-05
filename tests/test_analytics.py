@@ -3,7 +3,7 @@
 from datetime import date
 from decimal import Decimal, localcontext
 
-from ovdp_tracker.analytics import get_purchase_cash_flows
+from ovdp_tracker.analytics import get_purchase_cash_flows, simple_annual_return
 from ovdp_tracker.payments import delete_payment
 
 
@@ -98,7 +98,7 @@ def test_full_horizon_uses_each_calendar_amount_and_not_nominal_rate(database, b
                               ("redemption", "2027-01-01", "1000")):
         database.add_scheduled_payment(issue_id=issue["id"], kind=kind, planned_date=day, amount=amount)
 
-    # Aggregate same-day flows only for the benchmark and independently check the simple-yield formula.
+    # Aggregate same-day flows for the benchmark and calculate the simple return over the whole holding period.
     result = get_purchase_cash_flows(database, lot["id"], today=date(2025, 1, 1))
     totals = {}
     for flow in result["flows"]:
@@ -106,7 +106,7 @@ def test_full_horizon_uses_each_calendar_amount_and_not_nominal_rate(database, b
     assert totals == {"2025-01-01": Decimal("-10000"), "2026-01-01": Decimal("800"),
                       "2027-01-01": Decimal("10850")}
     assert result["expected_profit"] == Decimal("1650.00")
-    assert result["expected_profit"] / (Decimal("10000") * 2) * 100 == Decimal("8.25")
+    assert simple_annual_return(result)["rate"] == Decimal("0.0825")
 
 
 def test_redemption_cost_uses_quantity_at_actual_date_and_future_sales_are_not_realized(database, lot):

@@ -167,6 +167,45 @@ def xirr(flows: list[dict]) -> dict:
     return _xirr_result(terms, unique[0])
 
 
+def simple_annual_return(purchase: dict) -> dict:
+    """Calculate a purchase's full-horizon simple annual return from its cash flows and expected profit.
+
+    Return a fractional Decimal rate with at least 40 significant digits and exact cost-days for combining purchases.
+    If the term is zero or an unsold part has no redemption, return None and a ``zero_duration`` or
+    ``missing_redemption`` reason. Use actual redemption dates and otherwise the planned date.
+    """
+
+    # Resolve the original purchase, its sales and the redemption of any remaining bonds.
+    flows = purchase["flows"]
+    purchase_flow = next(flow for flow in flows if flow["kind"] == "purchase")
+    origin = date.fromisoformat(purchase_flow["date"])
+    sales = [flow for flow in flows if flow["kind"] == "sale"]
+    redemption = next((flow for flow in flows if flow["kind"] == "redemption"), None)
+    remaining = purchase_flow["quantity"] - sum(flow["quantity"] for flow in sales)
+    if remaining > 0 and redemption is None:
+        return {"rate": None, "reason": "missing_redemption", "cost_days": None}
+
+    # Multiply each sold part's exact purchase cost by its own holding time in days.
+    cost_days = [operation_amount(flow["cost_basis"], (date.fromisoformat(flow["date"]) - origin).days)
+                 for flow in sales]
+    if remaining > 0:
+        remaining_cost = _sum_amounts(
+            [purchase_flow["amount"].copy_negate()] + [flow["cost_basis"].copy_negate() for flow in sales]
+        )
+        days = (date.fromisoformat(redemption["date"]) - origin).days
+        cost_days.append(operation_amount(remaining_cost, days))
+    total_cost_days = _sum_amounts(cost_days)
+
+    # Keep the numerator exact and perform the only division with a controlled Decimal precision.
+    if total_cost_days == 0:
+        return {"rate": None, "reason": "zero_duration", "cost_days": total_cost_days}
+    profit = purchase["expected_profit"]
+    with localcontext() as context:
+        context.prec = max(40, len(profit.as_tuple().digits) + 4, len(total_cost_days.as_tuple().digits) + 4)
+        rate = profit * 365 / total_cost_days
+    return {"rate": rate, "reason": None, "cost_days": total_cost_days}
+
+
 def get_purchase_cash_flows(database: Database, lot_id: int, *, today: date | None = None) -> dict | None:
     """Return exact full-horizon flows and profits for lot_id, or None when the purchase is absent.
 
