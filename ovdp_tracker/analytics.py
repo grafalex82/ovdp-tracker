@@ -167,6 +167,16 @@ def xirr(flows: list[dict]) -> dict:
     return _xirr_result(terms, unique[0])
 
 
+def _simple_return_result(profit: Decimal, cost_days: Decimal) -> dict:
+    # Keep the numerator exact and perform the only division with a controlled Decimal precision.
+    if cost_days == 0:
+        return {"rate": None, "reason": "zero_duration", "cost_days": cost_days}
+    with localcontext() as context:
+        context.prec = max(40, len(profit.as_tuple().digits) + 4, len(cost_days.as_tuple().digits) + 4)
+        rate = profit * 365 / cost_days
+    return {"rate": rate, "reason": None, "cost_days": cost_days}
+
+
 def simple_annual_return(purchase: dict) -> dict:
     """Calculate a purchase's full-horizon simple annual return from its cash flows and expected profit.
 
@@ -196,14 +206,8 @@ def simple_annual_return(purchase: dict) -> dict:
         cost_days.append(operation_amount(remaining_cost, days))
     total_cost_days = _sum_amounts(cost_days)
 
-    # Keep the numerator exact and perform the only division with a controlled Decimal precision.
-    if total_cost_days == 0:
-        return {"rate": None, "reason": "zero_duration", "cost_days": total_cost_days}
-    profit = purchase["expected_profit"]
-    with localcontext() as context:
-        context.prec = max(40, len(profit.as_tuple().digits) + 4, len(total_cost_days.as_tuple().digits) + 4)
-        rate = profit * 365 / total_cost_days
-    return {"rate": rate, "reason": None, "cost_days": total_cost_days}
+    # Calculate the rate from full-horizon profit and the exact sum of cost-days.
+    return _simple_return_result(purchase["expected_profit"], total_cost_days)
 
 
 def get_purchase_cash_flows(database: Database, lot_id: int, *, today: date | None = None) -> dict | None:
@@ -268,4 +272,46 @@ def get_purchase_cash_flows(database: Database, lot_id: int, *, today: date | No
         "realized_profit": realized_profit, "expected_profit": _sum_amounts(flow["amount"] for flow in flows),
         "remaining_quantity": lot["remaining_quantity"],
         "remaining_cost": operation_amount(price, lot["remaining_quantity"]),
+    }
+
+
+def get_portfolio_returns(database: Database, *, currency: str, today: date | None = None) -> dict:
+    """Return full-horizon expected returns of active purchases in currency as of today.
+
+    Include complete purchase histories, combine cash flows by date and return fractional XIRR and simple rates.
+    Exclude closed purchases; today defaults to the local date. An empty portfolio has no annual returns.
+    """
+
+    # Select this currency's active purchases while preserving each included purchase's entire history.
+    today = today if today is not None else date.today()
+    purchases = [get_purchase_cash_flows(database, lot["id"], today=today) for lot in database.list_lots()
+                 if lot["currency"] == currency]
+    purchases = [purchase for purchase in purchases if purchase["remaining_quantity"] > 0]
+    if not purchases:
+        return {
+            "currency": currency, "purchase_ids": [], "flows": [], "expected_profit": Decimal("0.00"),
+            "xirr": {"rate": None, "reason": "no_active_purchases"},
+            "simple_return": {"rate": None, "reason": "no_active_purchases", "cost_days": None},
+        }
+
+    # Aggregate exact amounts by date without losing the original flows needed to identify a zero-length horizon.
+    flows = [flow for purchase in purchases for flow in purchase["flows"]]
+    grouped = {}
+    for flow in flows:
+        grouped.setdefault(flow["date"], []).append(flow["amount"])
+    totals = [(day, _sum_amounts(amounts)) for day, amounts in sorted(grouped.items())]
+    combined = [{"date": day, "amount": amount} for day, amount in totals if amount != 0]
+    profit = _sum_amounts(purchase["expected_profit"] for purchase in purchases)
+
+    # Sum profits and exact cost-days, without averaging the individual percentages.
+    parts = [simple_annual_return(purchase) for purchase in purchases]
+    if any(part["reason"] == "missing_redemption" for part in parts):
+        simple = {"rate": None, "reason": "missing_redemption", "cost_days": None}
+        annual_xirr = {"rate": None, "reason": "missing_redemption"}
+    else:
+        simple = _simple_return_result(profit, _sum_amounts(part["cost_days"] for part in parts))
+        annual_xirr = xirr(flows)
+    return {
+        "currency": currency, "purchase_ids": [purchase["lot_id"] for purchase in purchases],
+        "flows": combined, "expected_profit": profit, "xirr": annual_xirr, "simple_return": simple,
     }
