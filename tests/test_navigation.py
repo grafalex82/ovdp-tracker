@@ -29,7 +29,7 @@ def test_available_pages_share_sections_and_current_breadcrumb(app, lot, page, c
     # Keep purchases, history and the add form within the highlighted portfolio section.
     assert response.status_code == 200
     assert re.search(r'<(?:a|span)\b[^>]*aria-current="(?:page|true)"[^>]*>Портфель</', sections)
-    assert '<span aria-disabled="true">Выплаты</span>' in sections
+    assert '<a href="/payments">Выплаты</a>' in sections
     assert '<span aria-disabled="true">Статистика</span>' in sections
     assert "Скоро" not in sections
     assert "Добавить облигацию" not in sections

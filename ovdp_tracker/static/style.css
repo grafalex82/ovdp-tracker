@@ -145,6 +145,8 @@ button.primary:disabled:hover { background: var(--accent); }
 .actions > * { padding: 8px 0 11px; color: var(--muted); }
 .actions [aria-current] { box-shadow: 0 2px 0 var(--accent); color: var(--link); font-weight: 500; }
 .currency-filter { display: grid; gap: 7px; width: 140px; max-width: 100%; }
+.payment-filters { display: flex; flex-wrap: wrap; align-items: end; gap: 16px; margin-bottom: 16px; }
+.payment-filters .field { flex: 1 1 150px; max-width: 220px; }
 label { font-size: 15px; font-weight: 500; }
 
 .table-scroll {
@@ -179,6 +181,14 @@ tbody tr:hover { background: var(--row-hover); }
 .positions-table :is(th, td):is(:nth-child(2), :nth-child(3), :nth-child(6)) { text-align: right; }
 
 .calendar-table th { min-width: 110px; white-space: normal; }
+.payments-table { font-size: 14px; }
+.payments-table th, .payments-table td { padding: 10px 6px; vertical-align: top; white-space: normal; }
+.payments-table td { overflow-wrap: anywhere; }
+.payments-table td:nth-child(3) { min-width: 100px; }
+.payments-table td:first-child, .payments-table td:nth-child(4) { white-space: nowrap; }
+.payments-table .payment-date, .payments-table .payment-amount { white-space: nowrap; }
+.payments-table .payment-amount { font-weight: 500; }
+.payments-table td:last-child a { display: block; margin-top: 4px; }
 .calendar-table td { vertical-align: top; }
 .calendar-table td:last-child { min-width: 260px; white-space: normal; }
 .payment-purchases { display: grid; gap: 14px; margin: 0; padding: 0; list-style: none; }

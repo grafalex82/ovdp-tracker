@@ -175,3 +175,40 @@ def get_lot_details(database: Database, lot_id: int, *, today: date | None = Non
 
     # Use the same date and description rules as the portfolio list.
     return _describe_lot(database, lot, today if today is not None else date.today())
+
+
+def list_payment_events(
+    database: Database, *, currency: str, start: date | None = None, end: date | None = None,
+    today: date | None = None,
+) -> dict[str, list[dict]]:
+    """Return purchase payments in currency grouped by status and filtered by inclusive dates.
+
+    Filter confirmed receipts by actual date and other payments by planned date. Include closed purchases
+    and use the local date when today is None; start and end may be omitted for open boundaries.
+    """
+
+    # Reuse purchase-specific entitlement and status rules for active and closed purchases alike.
+    today = today if today is not None else date.today()
+    groups = {"overdue": [], "upcoming": [], "history": []}
+    for lot in database.list_lots():
+        if lot["currency"] != currency:
+            continue
+        purchase = _describe_lot(database, lot, today)
+        for payment in purchase["payments"]:
+            actual = payment["actual"]
+            group = "history" if actual else "overdue" if payment["status"] == "overdue" else "upcoming"
+            if payment["status"] == "zero" and payment["planned_date"] < today.isoformat():
+                continue
+            day = actual["actual_date"] if actual else payment["planned_date"]
+            if (start and day < start.isoformat()) or (end and day > end.isoformat()):
+                continue
+            groups[group].append({
+                **payment, "isin": lot["isin"], "lot_id": lot["id"], "bank_name": purchase["bank_name"],
+                "display_date": day,
+            })
+
+    # Sort individual purchase/event pairs deterministically without merging same-day events.
+    for events in groups.values():
+        events.sort(key=lambda item: (item["display_date"], item["isin"], item["lot_id"],
+                                     item["kind"] != "coupon", item["id"]))
+    return groups

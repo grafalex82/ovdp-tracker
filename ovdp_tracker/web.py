@@ -12,13 +12,13 @@ from .issues import edit_issue as save_issue_correction
 from .money import operation_amount, parse_money
 from .messages import user_message
 from .payments import PaymentValidationError, confirm_payment, edit_payment as save_payment_correction
-from .portfolio import get_lot_details, get_position_details, list_positions
+from .portfolio import get_lot_details, get_position_details, list_payment_events, list_positions
 from .nbu import NbuError, NbuNotFound
 from .quantity import MAX_BOND_QUANTITY
 from .sales import SaleValidationError, check_history, create_sale, validate_sale
 from .purchases import (
     CURRENCIES, IssueValidationError, PurchaseValidationError, create_purchase, issue_form_values, issue_signature,
-    validate_imported_issue, validate_issue, validate_purchase,
+    parse_date, validate_imported_issue, validate_issue, validate_purchase,
 )
 
 purchase_pages = Blueprint("purchases", __name__)
@@ -205,6 +205,36 @@ def lookup_issue(database: Database):
 def purchase_history(database: Database):
     """Render fully closed ISIN positions in the selected currency."""
     return render_portfolio(database, closed=True)
+
+
+@purchase_pages.get("/payments")
+@with_database
+def payment_list(database: Database):
+    """Render purchase-specific payments for the selected currency and inclusive date range."""
+
+    # Validate both date boundaries before building any filtered payment list.
+    currency = request.args.get("currency", "UAH")
+    if currency not in CURRENCIES:
+        abort(400, description="Unsupported portfolio currency.")
+    start_value = request.args.get("start", "")
+    end_value = request.args.get("end", "")
+    error = None
+    try:
+        start = parse_date(start_value) if start_value else None
+        end = parse_date(end_value) if end_value else None
+        if start and end and start > end:
+            error = "Начало периода не может быть позже его окончания."
+    except (TypeError, ValueError):
+        error = "Укажите корректные даты периода."
+
+    # Keep invalid input visible without evaluating the requested range.
+    groups = None
+    if not error:
+        groups = list_payment_events(database, currency=currency, start=start, end=end, today=date.today())
+    return render_template(
+        "payments.html", currency=currency, currencies=CURRENCIES, start=start_value, end=end_value,
+        error=error, groups=groups,
+    ), 400 if error else 200
 
 
 def render_portfolio(database: Database, *, closed: bool = False):
