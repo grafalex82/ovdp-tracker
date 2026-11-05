@@ -50,7 +50,8 @@
           <tbody>
             {% for position in positions %}
             <tr data-isin="{{ position.isin }}" data-currency="{{ position.currency }}">
-              <td><a href="{{ url_for('purchases.issue_details', isin=position.isin) }}">{{ position.isin }}</a></td>
+              <td><a href="{{ url_for('purchases.issue_details', isin=position.isin) }}">{{ position.isin }}</a>
+                {% if position.has_overdue_payments %}<span class="overdue">Требует подтверждения</span>{% endif %}</td>
               <td>{{ position.remaining_quantity }}</td>
               {% if position.next_coupon %}
               <td>{{ position.next_coupon.amount|money }}</td>

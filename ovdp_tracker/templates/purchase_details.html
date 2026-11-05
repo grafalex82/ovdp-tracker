@@ -13,6 +13,7 @@
         <div><h1>Покупка №{{ lot.id }}</h1><p class="subtitle">{{ lot.isin }}</p></div>
         <p class="status">{% if lot.closed %}Закрыта{% else %}Действующая{% endif %}</p>
       </div>
+      {% if lot.has_overdue_payments %}<p class="overdue">Есть выплаты, требующие подтверждения.</p>{% endif %}
       {% if request.args.get('sale_deleted') == '1' %}
       <p role="status" class="success">Продажа удалена. Остаток и ожидаемые выплаты пересчитаны.</p>
       {% endif %}

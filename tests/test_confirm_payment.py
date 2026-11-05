@@ -166,7 +166,9 @@ def test_closed_purchase_keeps_its_historical_coupon(database, shared_receipts, 
     actual = confirm_payment(database, lot["id"], coupon["id"], RECEIPT, TODAY)
     purchase = get_lot_details(database, lot["id"], today=TODAY)
     assert purchase["closed"] and purchase["remaining_quantity"] == 0
-    assert purchase["payments"] == [{**coupon, "quantity": 10, "planned_amount": "800.00", "actual": actual}]
+    assert purchase["payments"] == [
+        {**coupon, "quantity": 10, "planned_amount": "800.00", "actual": actual, "status": "confirmed"}
+    ]
 
 
 def test_redemption_closes_only_the_unsold_remainder(database, shared_receipts):

@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_payment_status.html" import payment_status %}
 {% set breadcrumbs = [('Портфель', url_for('index')), (position.isin, none)] %}
 {% block title %}{{ position.isin }} — ОВДП Трекер{% endblock %}
 {% block main_class %}portfolio{% endblock %}
@@ -7,6 +8,7 @@
         <h1>{{ position.isin }}</h1>
         <p class="status">{% if position.closed %}Закрытая позиция{% else %}Действующая позиция{% endif %}</p>
       </div>
+      {% if position.has_overdue_payments %}<p class="overdue">Есть выплаты, требующие подтверждения.</p>{% endif %}
       <p><a class="button" href="{{ url_for('purchases.edit_issue', isin=position.isin) }}">
         Редактировать облигацию</a></p>
       <p><a href="{{ url_for('index', currency=position.currency) }}">Портфель в {{ position.currency }}</a>
@@ -36,7 +38,8 @@
         Количество рассчитано по владению на дату события: покупка, купон, продажи, погашение.
         Общая плановая сумма включает все причитающиеся покупки, в том числе подтверждённые.
         Фактические дата и сумма показаны отдельно для каждой покупки;
-        плановая дата сама по себе не подтверждает получение денег.</p>
+        плановая дата сама по себе не подтверждает получение денег. Прошедшая выплата без факта
+        отмечается «Требует подтверждения» и не считается полученной.</p>
       <div class="table-scroll" role="region" aria-label="Календарь выплат" tabindex="0">
         <table class="calendar-table">
           <caption>Расписание {{ position.isin }} · {{ position.currency }}</caption>
@@ -62,13 +65,7 @@
                       Покупка №{{ purchase.lot_id }}</a></div>
                     <div>Количество: {{ purchase.quantity }} шт.</div>
                     <div>Плановая выплата: {{ purchase.planned_amount|money }} {{ position.currency }}</div>
-                    {% if purchase.actual %}
-                    <div class="hint">Статус: Подтверждено</div>
-                    {% elif event.kind == 'coupon' and event.amount|money == '0,00' %}
-                    <div class="hint">Статус: Нулевой купон — подтверждение не требуется</div>
-                    {% else %}
-                    <div class="hint">Статус: Не подтверждено</div>
-                    {% endif %}
+                    <div class="hint">Статус: {{ payment_status(purchase.status) }}</div>
                     {% if purchase.actual %}
                     <div class="hint">Фактическая выплата: {{ purchase.actual.amount|money }}
                       {{ position.currency }}</div>
@@ -103,7 +100,8 @@
             {% for lot in position.lots %}
             <tr id="lot-{{ lot.id }}">
               <td><a href="{{ url_for('purchases.purchase_details', lot_id=lot.id) }}">Покупка №{{ lot.id }}</a></td>
-              <td>{% if lot.closed %}Закрыта{% else %}Действующая{% endif %}</td>
+              <td>{% if lot.closed %}Закрыта{% else %}Действующая{% endif %}
+                {% if lot.has_overdue_payments %}<span class="overdue">Требует подтверждения</span>{% endif %}</td>
               <td>{{ lot.bank_name }}</td><td>{{ lot.purchase_date }}</td>
               <td class="number">{{ lot.quantity }}</td><td class="number">{{ lot.remaining_quantity }}</td>
               <td class="number">{{ lot.purchase_price|money }}</td>

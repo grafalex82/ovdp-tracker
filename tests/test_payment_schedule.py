@@ -201,7 +201,7 @@ def test_calendar_totals_are_exact_and_survive_reopening(database, database_path
         assert get_position_details(reopened, lot["isin"], today=today) == before
 
 
-def test_confirmed_purchase_keeps_its_plan_without_a_top_up(app, database, lot, lot_data):
+def test_confirmed_purchase_keeps_its_plan_without_a_top_up(app, database, lot, lot_data, monkeypatch):
     # Confirm the first purchase below its planned amount while leaving its neighbor unconfirmed.
     neighbor = database.add_lot(issue_id=lot["issue_id"], bank_id=lot["bank_id"], **{**lot_data, "quantity": 5})
     coupon = database.add_scheduled_payment(
@@ -215,15 +215,26 @@ def test_confirmed_purchase_keeps_its_plan_without_a_top_up(app, database, lot, 
     event, = get_position_details(database, lot["isin"], today=date(2026, 10, 31))["calendar"]
     assert event["quantity"] == 15 and event["planned_amount"] == "1200.00"
     first, second = event["purchases"]
-    assert first == {"lot_id": lot["id"], "quantity": 10, "planned_amount": "800.00", "actual": actual}
-    assert second == {"lot_id": neighbor["id"], "quantity": 5, "planned_amount": "400.00", "actual": None}
+    assert first == {
+        "lot_id": lot["id"], "quantity": 10, "planned_amount": "800.00", "actual": actual, "status": "confirmed"
+    }
+    assert second == {
+        "lot_id": neighbor["id"], "quantity": 5, "planned_amount": "400.00", "actual": None, "status": "overdue"
+    }
+    class LocalDate(date):
+        @classmethod
+        def today(cls):
+            """Return the fixed local date for the portfolio page."""
+            return cls(2026, 10, 31)
+
+    monkeypatch.setattr("ovdp_tracker.portfolio.date", LocalDate)
     with app.test_client() as client:
         row = calendar_row(client.get(f'/issues/{lot["isin"]}').get_data(as_text=True), coupon["id"])
     first_item, second_item = row.split("<li ")[1:]
     assert "1200,00" in row and "800,00" in first_item
     assert "Фактическая выплата: 795,00" in first_item and "Дата выплаты: 2026-06-03" in first_item
     assert "Подтверждено" in first_item and "Не подтверждено" not in first_item
-    assert "400,00" in second_item and "Не подтверждено" in second_item
+    assert "400,00" in second_item and "Требует подтверждения" in second_item
     assert "Фактическая выплата:" not in second_item and "Дата выплаты:" not in second_item
     assert row.count("<li ") == 2
 

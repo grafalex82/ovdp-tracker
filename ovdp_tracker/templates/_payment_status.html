@@ -1,0 +1,6 @@
+{% macro payment_status(status) -%}
+  {%- if status == 'confirmed' -%}Подтверждено
+  {%- elif status == 'zero' -%}Нулевой купон — подтверждение не требуется
+  {%- elif status == 'overdue' -%}<span class="overdue">Требует подтверждения</span>
+  {%- else -%}Не подтверждено{%- endif -%}
+{%- endmacro %}

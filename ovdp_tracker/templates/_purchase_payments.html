@@ -1,3 +1,6 @@
+      {% from "_payment_status.html" import payment_status %}
+      <p class="hint">План показывает причитающуюся сумму, факт — подтверждённое поступление.
+        Прошедшая плановая дата без факта отмечается «Требует подтверждения» и не означает получение денег.</p>
       <div class="table-scroll" role="region" aria-label="Выплаты покупки №{{ lot.id }}" tabindex="0">
         <table>
           <caption>План и факт покупки №{{ lot.id }} · {{ lot.currency }}</caption>
@@ -12,13 +15,13 @@
               <td>{% if payment.kind == 'coupon' %}Купон{% else %}Погашение{% endif %}</td>
               <td class="number">{{ payment.quantity }}</td><td class="number">{{ payment.planned_amount|money }}</td>
               {% if payment.actual %}
-              <td>{{ payment.actual.actual_date }} ·
+              <td>{{ payment_status(payment.status) }} · {{ payment.actual.actual_date }} ·
                 <a href="{{ url_for('purchases.edit_payment', lot_id=lot.id, actual_id=payment.actual.id) }}">
                   Исправить выплату</a></td><td class="number">{{ payment.actual.amount|money }}</td>
-              {% elif payment.kind == 'coupon' and payment.amount|money == '0,00' %}
-              <td colspan="2">Нулевой купон — подтверждение не требуется</td>
+              {% elif payment.status == 'zero' %}
+              <td colspan="2">{{ payment_status(payment.status) }}</td>
               {% else %}
-              <td colspan="2">Не подтверждено ·
+              <td colspan="2">{{ payment_status(payment.status) }} ·
                 <a href="{{ url_for('purchases.new_payment', lot_id=lot.id, event_id=payment.id) }}">
                   Подтвердить выплату</a></td>
               {% endif %}

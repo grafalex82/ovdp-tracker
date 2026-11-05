@@ -334,3 +334,7 @@ tbody tr:hover { background: var(--row-hover); }
     min-height: 44px;
   }
 }
+.overdue {
+  color: #9b2c18;
+  font-weight: 700;
+}
