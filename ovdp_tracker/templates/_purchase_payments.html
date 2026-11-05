@@ -16,7 +16,9 @@
               {% elif payment.kind == 'coupon' and payment.amount|money == '0,00' %}
               <td colspan="2">Нулевой купон — подтверждение не требуется</td>
               {% else %}
-              <td colspan="2">Не подтверждено</td>
+              <td colspan="2">Не подтверждено ·
+                <a href="{{ url_for('purchases.new_payment', lot_id=lot.id, event_id=payment.id) }}">
+                  Подтвердить выплату</a></td>
               {% endif %}
             </tr>
             {% else %}<tr><td colspan="6">Причитающихся выплат нет.</td></tr>{% endfor %}

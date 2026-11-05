@@ -55,6 +55,12 @@ _MESSAGES = {
     "Enter a positive sale price with at most two decimal places.":
         "Введите положительную цену с не более чем двумя знаками после разделителя.",
     "Purchase not found.": "Покупка не найдена.",
+    "Payment is not due for this purchase.": "Эта выплата не причитается выбранной покупке.",
+    "Payment does not require confirmation.": "Эта выплата не требует подтверждения.",
+    "Actual payment date cannot precede the purchase.": "Фактическая дата выплаты не может быть раньше покупки.",
+    "Actual payment date cannot be in the future.": "Фактическая дата выплаты не может быть в будущем.",
+    "Could not confirm the payment. Retry the operation.":
+        "Не удалось подтвердить выплату. Изменения не сохранены; повторите попытку.",
     "Sale not found.": "Продажа не найдена.",
     "Confirm deletion of the saved sale.": "Подтвердите удаление сохранённой продажи.",
     "Could not delete the sale. Retry the operation.":

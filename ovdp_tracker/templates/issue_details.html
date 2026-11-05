@@ -58,17 +58,25 @@
                 <ul class="payment-purchases">
                   {% for purchase in event.purchases %}
                   <li data-lot-id="{{ purchase.lot_id }}" data-payment-id="{{ event.id }}">
-                    <a href="{{ url_for('purchases.purchase_details', lot_id=purchase.lot_id) }}">
-                      Покупка №{{ purchase.lot_id }}</a>
-                    <div>{{ purchase.quantity }} шт. · План: {{ purchase.planned_amount|money }}
-                      {{ position.currency }}</div>
+                    <div><a href="{{ url_for('purchases.purchase_details', lot_id=purchase.lot_id) }}">
+                      Покупка №{{ purchase.lot_id }}</a></div>
+                    <div>Количество: {{ purchase.quantity }} шт.</div>
+                    <div>Плановая выплата: {{ purchase.planned_amount|money }} {{ position.currency }}</div>
                     {% if purchase.actual %}
-                    <div class="hint">Подтверждено · Факт: {{ purchase.actual.amount|money }}
-                      {{ position.currency }} · {{ purchase.actual.actual_date }}</div>
+                    <div class="hint">Статус: Подтверждено</div>
                     {% elif event.kind == 'coupon' and event.amount|money == '0,00' %}
-                    <div class="hint">Нулевой купон — подтверждение не требуется</div>
+                    <div class="hint">Статус: Нулевой купон — подтверждение не требуется</div>
                     {% else %}
-                    <div class="hint">Не подтверждено</div>
+                    <div class="hint">Статус: Не подтверждено</div>
+                    {% endif %}
+                    {% if purchase.actual %}
+                    <div class="hint">Фактическая выплата: {{ purchase.actual.amount|money }}
+                      {{ position.currency }}</div>
+                    <div class="hint">Дата выплаты: {{ purchase.actual.actual_date }}</div>
+                    {% endif %}
+                    {% if not purchase.actual and purchase.planned_amount|money != '0,00' %}
+                    <div><a href="{{ url_for('purchases.new_payment', lot_id=purchase.lot_id, event_id=event.id) }}">
+                      Подтвердить выплату</a></div>
                     {% endif %}
                   </li>
                   {% endfor %}

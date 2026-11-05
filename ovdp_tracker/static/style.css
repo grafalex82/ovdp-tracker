@@ -182,6 +182,7 @@ tbody tr:hover { background: var(--row-hover); }
 .calendar-table td { vertical-align: top; }
 .calendar-table td:last-child { min-width: 260px; white-space: normal; }
 .payment-purchases { display: grid; gap: 14px; margin: 0; padding: 0; list-style: none; }
+.payment-purchases li { white-space: nowrap; }
 .payment-purchases li + li { padding-top: 14px; border-top: 1px solid var(--border); }
 
 .purchase-fields {

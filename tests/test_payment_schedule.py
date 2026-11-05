@@ -104,7 +104,7 @@ def test_shared_dates_count_once_while_confirmations_preserve_calendar_totals(
     assert '<ul class="payment-purchases">' in breakdown and breakdown.count("<li ") == 2
     for purchase in (first, second):
         assert f'href="/purchases/{purchase["id"]}"' in breakdown
-    assert breakdown.count("Подтверждено · Факт:") == confirmed
+    assert breakdown.count("Статус: Подтверждено") == confirmed
     assert breakdown.count("Не подтверждено") == 2 - confirmed
     assert "Ближайшая выплата" not in details
     assert "Причитающиеся выплаты покупок</h2>" not in details
@@ -221,9 +221,10 @@ def test_confirmed_purchase_keeps_its_plan_without_a_top_up(app, database, lot, 
         row = calendar_row(client.get(f'/issues/{lot["isin"]}').get_data(as_text=True), coupon["id"])
     first_item, second_item = row.split("<li ")[1:]
     assert "1200,00" in row and "800,00" in first_item
-    assert "Факт: 795,00" in first_item and "2026-06-03" in first_item
+    assert "Фактическая выплата: 795,00" in first_item and "Дата выплаты: 2026-06-03" in first_item
     assert "Подтверждено" in first_item and "Не подтверждено" not in first_item
     assert "400,00" in second_item and "Не подтверждено" in second_item
+    assert "Фактическая выплата:" not in second_item and "Дата выплаты:" not in second_item
     assert row.count("<li ") == 2
 
 

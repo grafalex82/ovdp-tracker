@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% set breadcrumbs = [('Портфель', url_for('index')),
+  (lot.isin, url_for('purchases.issue_details', isin=lot.isin)),
+  ('Покупка №' ~ lot.id, url_for('purchases.purchase_details', lot_id=lot.id)),
+  ('Подтверждение выплаты', none)] %}
+{% block title %}Подтверждение выплаты — покупка №{{ lot.id }} — ОВДП Трекер{% endblock %}
+{% block content %}
+      <h1>Подтверждение выплаты</h1>
+      <p class="subtitle">{{ lot.isin }} · Покупка №{{ lot.id }} · {{ lot.currency }}</p>
+      <dl class="purchase-fields">
+        <div><dt>Тип выплаты</dt><dd>{{ 'Купон' if payment.kind == 'coupon' else 'Погашение' }}</dd></div>
+        <div><dt>Плановая дата</dt><dd>{{ payment.planned_date }}</dd></div>
+        <div><dt>Количество на дату события</dt><dd>{{ payment.quantity }}</dd></div>
+        <div><dt>Плановая сумма покупки</dt><dd>{{ payment.planned_amount|money }} {{ lot.currency }}</dd></div>
+      </dl>
+      <p class="hint">Укажите фактические дату и общую сумму поступления этой покупки.
+        Они могут отличаться от плана; календарь выпуска и выплаты других покупок сохранятся.
+        Доплата до плановой суммы не ожидается.</p>
+      {% if payment.kind == 'redemption' %}
+      <p class="hint">Подтверждение погашения закроет весь непроданный остаток этой покупки.</p>
+      {% endif %}
+      {% if errors.get('form') %}<p role="alert" class="error">{{ errors.form }}</p>{% endif %}
+      <form method="post" class="purchase-form" novalidate
+            action="{{ url_for('purchases.new_payment', lot_id=lot.id, event_id=payment.id) }}"
+            data-unsaved-form data-unsaved-error="{{ 'true' if errors else 'false' }}">
+        {% include 'unsaved_baseline.html' %}
+        <div class="form-panel">
+          <label class="field">Фактическая дата
+            <input type="date" name="actual_date" value="{{ values.get('actual_date', '') }}"
+                   min="{{ lot.purchase_date }}" max="{{ today }}" required
+                   {% if errors.get('actual_date') %}
+                   aria-invalid="true" aria-describedby="actual-date-error"{% endif %}>
+            {% if errors.get('actual_date') %}
+            <span id="actual-date-error" role="alert" class="error">{{ errors.actual_date }}</span>
+            {% endif %}
+          </label>
+          <label class="field">Полученная сумма, {{ lot.currency }}
+            <input type="text" name="amount" value="{{ values.get('amount', '') }}" inputmode="decimal" required
+                   {% if errors.get('amount') %}aria-invalid="true" aria-describedby="amount-error"{% endif %}>
+            <span class="hint">Общая сумма покупки, больше нуля и максимум с двумя знаками после разделителя.</span>
+            {% if errors.get('amount') %}
+            <span id="amount-error" role="alert" class="error">{{ errors.amount }}</span>
+            {% endif %}
+          </label>
+        </div>
+        <div class="form-actions">
+          <button type="submit" class="primary">Подтвердить выплату</button>
+          <a href="{{ url_for('purchases.purchase_details', lot_id=lot.id) }}">Отмена</a>
+        </div>
+      </form>
+{% endblock %}

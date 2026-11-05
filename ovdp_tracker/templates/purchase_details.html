@@ -3,6 +3,9 @@
   (lot.isin, url_for('purchases.issue_details', isin=lot.isin)), ('Покупка №' ~ lot.id, none)] %}
 {% block title %}Покупка №{{ lot.id }} — {{ lot.isin }} — ОВДП Трекер{% endblock %}
 {% block content %}
+      {% if request.args.get('payment_saved') == '1' %}
+      <p role="status" class="success">Выплата подтверждена.</p>
+      {% endif %}
       <div class="page-heading">
         <div><h1>Покупка №{{ lot.id }}</h1><p class="subtitle">{{ lot.isin }}</p></div>
         <p class="status">{% if lot.closed %}Закрыта{% else %}Действующая{% endif %}</p>
