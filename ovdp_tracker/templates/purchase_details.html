@@ -9,6 +9,9 @@
       {% if request.args.get('payment_updated') == '1' %}
       <p role="status" class="success">Выплата исправлена.</p>
       {% endif %}
+      {% if request.args.get('payment_deleted') == '1' %}
+      <p role="status" class="success">Подтверждение выплаты удалено. Остаток и ожидаемые выплаты пересчитаны.</p>
+      {% endif %}
       <div class="page-heading">
         <div><h1>Покупка №{{ lot.id }}</h1><p class="subtitle">{{ lot.isin }}</p></div>
         <p class="status">{% if lot.closed %}Закрыта{% else %}Действующая{% endif %}</p>

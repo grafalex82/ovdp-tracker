@@ -465,6 +465,13 @@ class Database:
             return self.get_actual_payment(actual_id, lot_id=lot_id)
 
 
+    def delete_actual_payment(self, actual_id: int, *, lot_id: int) -> bool:
+        """Delete actual_id only within lot_id; return False if the receipt is absent or belongs to another purchase."""
+        with self._write_scope():
+            cursor = self._execute("DELETE FROM actual_payments WHERE id = ? AND lot_id = ?", (actual_id, lot_id))
+            return cursor.rowcount > 0
+
+
     def add_sale(self, *, lot_id: int, sale_date: str, sale_price: str, quantity: int) -> dict:
         """Record a lot's sale date, exact decimal unit price string, and quantity; return the sale dictionary."""
         return self._insert_record("sales", {

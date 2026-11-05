@@ -64,6 +64,9 @@ _MESSAGES = {
     "Confirmed payment not found.": "Подтверждённая выплата не найдена.",
     "Could not update the payment. Retry the operation.":
         "Не удалось исправить выплату. Изменения не сохранены; повторите попытку.",
+    "Confirm deletion of the saved payment.": "Подтвердите удаление сохранённой выплаты.",
+    "Could not delete the payment. Retry the operation.":
+        "Не удалось удалить выплату. Изменения не сохранены; повторите попытку.",
     "Sale not found.": "Продажа не найдена.",
     "Confirm deletion of the saved sale.": "Подтвердите удаление сохранённой продажи.",
     "Could not delete the sale. Retry the operation.":

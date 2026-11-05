@@ -101,3 +101,21 @@ def edit_payment(database: Database, lot_id: int, actual_id: int, values: dict, 
         except SaleValidationError as error:
             raise PaymentValidationError({"form": str(error)}) from error
         return updated
+
+
+def delete_payment(database: Database, lot_id: int, actual_id: int) -> None:
+    """Delete actual_id from lot_id after atomically validating ownership and the remaining history."""
+
+    # Resolve ownership and remove only the requested receipt while holding the write lock.
+    with database.transaction():
+        if database.get_actual_payment(actual_id, lot_id=lot_id) is None:
+            raise PaymentValidationError({"form": "Confirmed payment not found."})
+        lot = database.get_lot(lot_id)
+        if not database.delete_actual_payment(actual_id, lot_id=lot_id):
+            raise PaymentValidationError({"form": "Confirmed payment not found."})
+
+        # Validate the remaining history before committing the deletion.
+        try:
+            check_history(database, lot, database.list_sales(lot_id))
+        except SaleValidationError as error:
+            raise PaymentValidationError({"form": str(error)}) from error

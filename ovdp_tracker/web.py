@@ -11,7 +11,8 @@ from .db import Database, DatabaseError
 from .issues import edit_issue as save_issue_correction
 from .money import operation_amount, parse_money
 from .messages import user_message
-from .payments import PaymentValidationError, confirm_payment, edit_payment as save_payment_correction
+from .payments import PaymentValidationError, confirm_payment, delete_payment as remove_payment
+from .payments import edit_payment as save_payment_correction
 from .portfolio import get_lot_details, get_position_details, list_payment_events, list_positions
 from .nbu import NbuError, NbuNotFound
 from .quantity import MAX_BOND_QUANTITY
@@ -386,6 +387,41 @@ def edit_payment(database: Database, lot_id: int, actual_id: int):
             return redirect(url_for("purchases.purchase_details", lot_id=lot_id, payment_updated="1"))
 
     # Reuse the receipt form, parent navigation and original dirty baseline after any rejected correction.
+    return render_template("payment_form.html", lot=lot, payment=payment, values=values, errors=errors,
+                           today=today.isoformat(), editing=True), status
+
+
+@purchase_pages.post("/purchases/<int:lot_id>/payments/<int:actual_id>/delete")
+@with_database
+def delete_payment(database: Database, lot_id: int, actual_id: int):
+    """Remove the explicitly confirmed receipt and preserve the submitted draft on failure."""
+
+    # Resolve the saved receipt for the dialog and reject missing or foreign identifiers.
+    today = date.today()
+    lot = get_lot_details(database, lot_id, today=today)
+    if lot is None:
+        abort(404, description="Purchase not found.")
+    payment = next((item for item in lot["payments"] if item["actual"] and item["actual"]["id"] == actual_id), None)
+    if payment is None:
+        abort(404, description="Confirmed payment not found.")
+
+    # Delete only after explicit confirmation, rechecking ownership and history inside the domain operation.
+    try:
+        if request.form.get("confirm") != "delete":
+            raise PaymentValidationError({"form": "Confirm deletion of the saved payment."})
+        remove_payment(database, lot_id, actual_id)
+    except PaymentValidationError as error:
+        errors = {field: user_message(message) for field, message in error.errors.items()}
+        status = 400
+    except DatabaseError:
+        current_app.logger.exception("Could not delete the payment.")
+        errors = {"form": user_message("Could not delete the payment. Retry the operation.")}
+        status = 503
+    else:
+        return redirect(url_for("purchases.purchase_details", lot_id=lot_id, payment_deleted="1"))
+
+    # Retain the submitted editor values and original baseline independently of saved dialog details.
+    values = {**payment["actual"], **request.form.to_dict()}
     return render_template("payment_form.html", lot=lot, payment=payment, values=values, errors=errors,
                            today=today.isoformat(), editing=True), status
 
