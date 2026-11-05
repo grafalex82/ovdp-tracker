@@ -1,7 +1,8 @@
 """Build exact purchase cash flows and distinguish realized from full-horizon profit."""
 
 from datetime import date
-from decimal import Decimal
+from decimal import Decimal, localcontext
+import math
 
 from .db import Database
 from .money import operation_amount, parse_money
@@ -19,6 +20,151 @@ def _sum_amounts(amounts) -> Decimal:
     # Construct the decimal directly without rounding in the active context.
     sign = "-" if cents < 0 else ""
     return Decimal(f"{sign}{abs(cents) // 100}.{abs(cents) % 100:02d}")
+
+
+def _discounted_values(terms: list[tuple[float, float]], log_rate: float) -> tuple[float, float]:
+    # Factor out the largest discount exponent to avoid overflow without changing signs or roots.
+    anchor = terms[-1][0] if log_rate < 0 else terms[0][0]
+    weighted = [(years, amount * math.exp(-(years - anchor) * log_rate)) for years, amount in terms]
+    scale = math.fsum(abs(amount) for _, amount in weighted)
+
+    # Normalize both the residual and derivative against the discounted absolute cash flows.
+    value = math.fsum(amount for _, amount in weighted) / scale
+    derivative = math.fsum(-years * amount for years, amount in weighted) / scale
+    return value, derivative
+
+
+def _bisect(terms: list[tuple[float, float]], left: float, right: float, component: int) -> float | None:
+    # Refine a bracket while retaining a sign change and limiting the number of iterations.
+    left_value = _discounted_values(terms, left)[component]
+    for _ in range(100):
+        middle = (left + right) / 2
+        if middle == left or middle == right:
+            return middle
+        value = _discounted_values(terms, middle)[component]
+        if value == 0:
+            return middle
+        if (left_value < 0) != (value < 0):
+            right = middle
+        else:
+            left, left_value = middle, value
+
+    # A bracket that cannot be refined reliably is not an acceptable result.
+    return None
+
+
+def _xirr_result(terms: list[tuple[float, float]], root: float | None) -> dict:
+    # Reject absent, unrepresentable or numerically inaccurate candidates.
+    if root is None:
+        return {"rate": None, "reason": "numerical_failure"}
+    try:
+        rate = math.expm1(root)
+    except OverflowError:
+        return {"rate": None, "reason": "numerical_failure"}
+    if (not math.isfinite(rate) or rate <= -1 or math.ulp(rate) > 1e-7
+            or abs(_discounted_values(terms, root)[0]) > 1e-12):
+        return {"rate": None, "reason": "numerical_failure"}
+
+    # Return an unrounded fractional annual rate for presentation or aggregation.
+    return {"rate": rate, "reason": None}
+
+
+def xirr(flows: list[dict]) -> dict:
+    """Calculate annual XIRR for purchase cash-flow dictionaries using actual days and a 365-day year.
+
+    Aggregate Decimal amounts in one currency by ISO date and ignore zero totals. Return the rate as a fraction in
+    ``rate`` with ``reason`` set to None; otherwise return None and a reason code: ``missing_sign``,
+    ``zero_duration``, ``multiple_roots`` or ``numerical_failure``. Search is bounded to representable
+    floating-point rates and cannot prove uniqueness for every possible nonconventional cash-flow series.
+    """
+
+    # Identify the zero-duration case before combining cash flows that share one date.
+    nonzero = [flow for flow in flows if flow["amount"] != 0]
+    has_positive = any(flow["amount"] > 0 for flow in nonzero)
+    has_negative = any(flow["amount"] < 0 for flow in nonzero)
+    if has_positive and has_negative and len({flow["date"] for flow in nonzero}) == 1:
+        return {"rate": None, "reason": "zero_duration"}
+    grouped = {}
+    for flow in nonzero:
+        grouped.setdefault(date.fromisoformat(flow["date"]), []).append(flow["amount"])
+    totals = sorted((day, _sum_amounts(amounts)) for day, amounts in grouped.items())
+    totals = [(day, amount) for day, amount in totals if amount != 0]
+    if not any(amount > 0 for _, amount in totals) or not any(amount < 0 for _, amount in totals):
+        return {"rate": None, "reason": "missing_sign"}
+
+    # Scale Decimal amounts before converting to floats and retain the earliest date as the origin.
+    origin = totals[0][0]
+    maximum = max(amount.copy_abs() for _, amount in totals)
+    with localcontext() as context:
+        context.prec = 40
+        terms = [((day - origin).days / 365, float(amount / maximum)) for day, amount in totals]
+    if any(amount == 0 for _, amount in terms):
+        return {"rate": None, "reason": "numerical_failure"}
+
+    # A single chronological sign change permits at most one root, so bracket it directly.
+    lower, upper = math.log(2 ** -53), math.log(float.fromhex("0x1.fffffffffffffp+1023"))
+    sign_changes = sum((first[1] < 0) != (second[1] < 0) for first, second in zip(terms, terms[1:]))
+    if sign_changes == 1:
+        left_value = _discounted_values(terms, lower)[0]
+        right_value = _discounted_values(terms, upper)[0]
+        if left_value == 0 or right_value == 0 or (left_value < 0) == (right_value < 0):
+            return {"rate": None, "reason": "numerical_failure"}
+        return _xirr_result(terms, _bisect(terms, lower, upper, 0))
+
+    # Scan for multiple roots and extrema, including intervals with two roots.
+    step = 0.05
+    points = [lower]
+    while points[-1] + step < upper:
+        points.append(points[-1] + step)
+    points.append(upper)
+    previous_point = points[0]
+    previous_value, previous_derivative = _discounted_values(terms, previous_point)
+    previous_derivative_point = previous_point
+    roots = []
+    uncertain = False
+    for point in points[1:]:
+        value, derivative = _discounted_values(terms, point)
+        if previous_value == 0:
+            roots.append(previous_point)
+        elif value != 0 and (previous_value < 0) != (value < 0):
+            root = _bisect(terms, previous_point, point, 0)
+            if root is None:
+                return {"rate": None, "reason": "numerical_failure"}
+            roots.append(root)
+
+        # Inspect each detected stationary point so two roots within one scan interval are not missed.
+        if derivative != 0 and previous_derivative != 0 and (derivative < 0) != (previous_derivative < 0):
+            extremum = _bisect(terms, previous_derivative_point, point, 1)
+            if extremum is None:
+                return {"rate": None, "reason": "numerical_failure"}
+            extremum_value = _discounted_values(terms, extremum)[0]
+            if previous_derivative_point == previous_point:
+                for a, b in ((previous_point, extremum), (extremum, point)):
+                    fa, fb = _discounted_values(terms, a)[0], _discounted_values(terms, b)[0]
+                    if fa != 0 and fb != 0 and (fa < 0) != (fb < 0):
+                        root = _bisect(terms, a, b, 0)
+                        if root is None:
+                            return {"rate": None, "reason": "numerical_failure"}
+                        roots.append(root)
+            if abs(extremum_value) < 1e-14:
+                uncertain = True
+        if derivative != 0:
+            previous_derivative, previous_derivative_point = derivative, point
+        previous_point, previous_value = point, value
+    if previous_value == 0:
+        roots.append(previous_point)
+
+    # Deduplicate brackets and reject cases with multiple roots or an uncertain stationary point.
+    roots.sort()
+    unique = []
+    for root in roots:
+        if not unique or abs(root - unique[-1]) > 1e-10:
+            unique.append(root)
+    if len(unique) > 1:
+        return {"rate": None, "reason": "multiple_roots"}
+    if not unique or uncertain:
+        return {"rate": None, "reason": "numerical_failure"}
+    return _xirr_result(terms, unique[0])
 
 
 def get_purchase_cash_flows(database: Database, lot_id: int, *, today: date | None = None) -> dict | None:
