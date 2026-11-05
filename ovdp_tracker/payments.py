@@ -1,4 +1,4 @@
-"""Confirm purchase-specific receipts without changing the shared issue calendar."""
+"""Confirm and correct purchase-specific receipts without changing the shared issue calendar."""
 
 from datetime import date
 
@@ -71,3 +71,33 @@ def confirm_payment(database: Database, lot_id: int, event_id: int, values: dict
         except SaleValidationError as error:
             raise PaymentValidationError({"form": str(error)}) from error
         return actual
+
+
+def edit_payment(database: Database, lot_id: int, actual_id: int, values: dict, today: date) -> dict:
+    """Correct actual_id within lot_id using receipt values and the local today; return the saved receipt.
+
+    Preserve the purchase/event pair and validate ownership, entitlement and the resulting history atomically.
+    """
+
+    # Resolve the saved receipt and its purchase-specific entitlement under the write lock.
+    with database.transaction():
+        actual = database.get_actual_payment(actual_id, lot_id=lot_id)
+        if actual is None:
+            raise PaymentValidationError({"form": "Confirmed payment not found."})
+        lot = get_lot_details(database, lot_id, today=today)
+        payment = next((item for item in lot["payments"] if item["id"] == actual["scheduled_payment_id"]), None)
+        if payment is None:
+            raise PaymentValidationError({"form": "Payment is not due for this purchase."})
+        if payment["quantity"] <= 0 or parse_money(payment["planned_amount"]) <= 0:
+            raise PaymentValidationError({"form": "Payment does not require confirmation."})
+
+        # Replace only the receipt fields and roll back any conflicting sale or failed write.
+        parsed = _validate_payment(values, lot["purchase_date"], today)
+        updated = database.update_actual_payment(actual_id, lot_id=lot_id, **parsed)
+        if updated is None:
+            raise PaymentValidationError({"form": "Confirmed payment not found."})
+        try:
+            check_history(database, lot, database.list_sales(lot_id))
+        except SaleValidationError as error:
+            raise PaymentValidationError({"form": str(error)}) from error
+        return updated

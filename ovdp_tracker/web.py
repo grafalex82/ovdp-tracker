@@ -11,7 +11,7 @@ from .db import Database, DatabaseError
 from .issues import edit_issue as save_issue_correction
 from .money import operation_amount, parse_money
 from .messages import user_message
-from .payments import PaymentValidationError, confirm_payment
+from .payments import PaymentValidationError, confirm_payment, edit_payment as save_payment_correction
 from .portfolio import get_lot_details, get_position_details, list_positions
 from .nbu import NbuError, NbuNotFound
 from .quantity import MAX_BOND_QUANTITY
@@ -324,6 +324,40 @@ def new_payment(database: Database, lot_id: int, event_id: int):
     # Reuse the shared form protection, including the original baseline after validation or storage errors.
     return render_template("payment_form.html", lot=lot, payment=payment, values=values, errors=errors,
                            today=today.isoformat()), status
+
+
+@purchase_pages.route("/purchases/<int:lot_id>/payments/<int:actual_id>/edit", methods=["GET", "POST"])
+@with_database
+def edit_payment(database: Database, lot_id: int, actual_id: int):
+    """Render or correct actual_id within lot_id while preserving rejected receipt inputs."""
+
+    # Locate this purchase's existing receipt without exposing confirmations of neighboring purchases.
+    today = date.today()
+    lot = get_lot_details(database, lot_id, today=today)
+    if lot is None:
+        abort(404, description="Purchase not found.")
+    payment = next((item for item in lot["payments"] if item["actual"] and item["actual"]["id"] == actual_id), None)
+    if payment is None:
+        abort(404, description="Confirmed payment not found.")
+    values, errors, status = payment["actual"], {}, 200
+
+    # Recheck receipt ownership and the proposed history in the same transaction as the correction.
+    if request.method == "POST":
+        values = request.form.to_dict()
+        try:
+            save_payment_correction(database, lot_id, actual_id, values, today)
+        except PaymentValidationError as error:
+            errors = {field: user_message(message) for field, message in error.errors.items()}
+            status = 400
+        except DatabaseError:
+            current_app.logger.exception("Could not update the payment.")
+            errors["form"], status = user_message("Could not update the payment. Retry the operation."), 503
+        else:
+            return redirect(url_for("purchases.purchase_details", lot_id=lot_id, payment_updated="1"))
+
+    # Reuse the receipt form, parent navigation and original dirty baseline after any rejected correction.
+    return render_template("payment_form.html", lot=lot, payment=payment, values=values, errors=errors,
+                           today=today.isoformat(), editing=True), status
 
 
 @purchase_pages.route("/purchases/<int:lot_id>/delete", methods=["GET", "POST"])

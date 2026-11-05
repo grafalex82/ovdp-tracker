@@ -12,7 +12,9 @@
               <td>{% if payment.kind == 'coupon' %}Купон{% else %}Погашение{% endif %}</td>
               <td class="number">{{ payment.quantity }}</td><td class="number">{{ payment.planned_amount|money }}</td>
               {% if payment.actual %}
-              <td>{{ payment.actual.actual_date }}</td><td class="number">{{ payment.actual.amount|money }}</td>
+              <td>{{ payment.actual.actual_date }} ·
+                <a href="{{ url_for('purchases.edit_payment', lot_id=lot.id, actual_id=payment.actual.id) }}">
+                  Исправить выплату</a></td><td class="number">{{ payment.actual.amount|money }}</td>
               {% elif payment.kind == 'coupon' and payment.amount|money == '0,00' %}
               <td colspan="2">Нулевой купон — подтверждение не требуется</td>
               {% else %}

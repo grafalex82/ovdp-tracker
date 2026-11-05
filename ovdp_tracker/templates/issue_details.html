@@ -73,6 +73,8 @@
                     <div class="hint">Фактическая выплата: {{ purchase.actual.amount|money }}
                       {{ position.currency }}</div>
                     <div class="hint">Дата выплаты: {{ purchase.actual.actual_date }}</div>
+                    <div><a href="{{ url_for('purchases.edit_payment', lot_id=purchase.lot_id,
+                      actual_id=purchase.actual.id) }}">Исправить выплату</a></div>
                     {% endif %}
                     {% if not purchase.actual and purchase.planned_amount|money != '0,00' %}
                     <div><a href="{{ url_for('purchases.new_payment', lot_id=purchase.lot_id, event_id=event.id) }}">

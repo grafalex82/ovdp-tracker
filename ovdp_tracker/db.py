@@ -452,6 +452,19 @@ class Database:
         return self._fetch_all("SELECT * FROM actual_payments WHERE lot_id = ? ORDER BY id", (lot_id,))
 
 
+    def get_actual_payment(self, actual_id: int, *, lot_id: int) -> dict | None:
+        """Return actual_id's receipt owned by lot_id, or None when absent or owned by another purchase."""
+        return self._fetch_one("SELECT * FROM actual_payments WHERE id = ? AND lot_id = ?", (actual_id, lot_id))
+
+
+    def update_actual_payment(self, actual_id: int, *, lot_id: int, actual_date: str, amount: str) -> dict | None:
+        """Correct actual_id's ISO date and exact total within lot_id; return the receipt or None if not owned."""
+        with self._write_scope():
+            self._execute("UPDATE actual_payments SET actual_date = ?, amount = ? WHERE id = ? AND lot_id = ?",
+                          (actual_date, str(parse_money(amount)), actual_id, lot_id))
+            return self.get_actual_payment(actual_id, lot_id=lot_id)
+
+
     def add_sale(self, *, lot_id: int, sale_date: str, sale_price: str, quantity: int) -> dict:
         """Record a lot's sale date, exact decimal unit price string, and quantity; return the sale dictionary."""
         return self._insert_record("sales", {

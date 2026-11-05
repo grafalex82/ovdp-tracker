@@ -61,6 +61,9 @@ _MESSAGES = {
     "Actual payment date cannot be in the future.": "Фактическая дата выплаты не может быть в будущем.",
     "Could not confirm the payment. Retry the operation.":
         "Не удалось подтвердить выплату. Изменения не сохранены; повторите попытку.",
+    "Confirmed payment not found.": "Подтверждённая выплата не найдена.",
+    "Could not update the payment. Retry the operation.":
+        "Не удалось исправить выплату. Изменения не сохранены; повторите попытку.",
     "Sale not found.": "Продажа не найдена.",
     "Confirm deletion of the saved sale.": "Подтвердите удаление сохранённой продажи.",
     "Could not delete the sale. Retry the operation.":
