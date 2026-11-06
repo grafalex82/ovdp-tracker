@@ -275,6 +275,23 @@ def get_purchase_cash_flows(database: Database, lot_id: int, *, today: date | No
     }
 
 
+def summarize_receipts(purchases: list[dict], *, today: date) -> dict:
+    """Summarize completed profit and separate confirmed and expected payments through the full horizon."""
+
+    # Collect purchase-specific flows without adding a second copy of the shared issue calendar.
+    flows = [flow for purchase in purchases for flow in purchase["flows"]]
+    completed = [flow for flow in flows if flow["status"] == "actual" and flow["date"] <= today.isoformat()]
+    expected = [flow for flow in flows if flow["status"] == "expected"]
+
+    # Keep future-dated confirmations out of received amounts and forecasts until their actual date.
+    return {
+        "realized_profit": _sum_amounts(purchase["realized_profit"] for purchase in purchases),
+        "received_coupons": _sum_amounts(flow["amount"] for flow in completed if flow["kind"] == "coupon"),
+        "expected_coupons": _sum_amounts(flow["amount"] for flow in expected if flow["kind"] == "coupon"),
+        "expected_redemptions": _sum_amounts(flow["amount"] for flow in expected if flow["kind"] == "redemption"),
+    }
+
+
 def _combine_purchase_returns(purchases: list[dict], currency: str) -> dict:
     # Exclude closed purchases while preserving the complete history of each active purchase.
     purchases = [purchase for purchase in purchases if purchase["remaining_quantity"] > 0]

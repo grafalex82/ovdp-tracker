@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_analytics.html" import returns_block %}
 {% set breadcrumbs = [('Портфель', url_for('index')),
   (lot.isin, url_for('purchases.issue_details', isin=lot.isin)), ('Покупка №' ~ lot.id, none)] %}
 {% block title %}Покупка №{{ lot.id }} — {{ lot.isin }} — ОВДП Трекер{% endblock %}
@@ -43,6 +44,7 @@
           <dd>{{ lot.schedule|selectattr('kind', 'equalto', 'coupon')|list|length }}</dd></div>
         <div><dt>Дата погашения</dt><dd>{{ lot.maturity_date }}</dd></div>
       </dl>
+      {{ returns_block(returns, summary, lot.currency, purchase) }}
       <div class="form-actions">
         <a class="button" href="{{ url_for('purchases.edit_purchase', lot_id=lot.id) }}">Редактировать покупку</a>
       </div>

@@ -7,6 +7,8 @@ import json
 from flask import Blueprint, abort, current_app, jsonify, redirect, render_template, request, url_for
 from itsdangerous import BadSignature
 
+from .analytics import (get_portfolio_returns, get_position_returns, get_purchase_cash_flows, simple_annual_return,
+                        summarize_receipts, xirr)
 from .db import Database, DatabaseError
 from .issues import edit_issue as save_issue_correction
 from .money import operation_amount, parse_money
@@ -53,7 +55,37 @@ def with_database(view):
 @purchase_pages.app_template_filter("money")
 def format_money(value: str) -> str:
     """Format an exact monetary string with two decimal places and a comma separator."""
-    return str(operation_amount(parse_money(value))).replace(".", ",")
+    return str(operation_amount(parse_money(str(value)))).replace(".", ",")
+
+
+@purchase_pages.app_template_filter("annual_rate")
+def format_annual_rate(value) -> str:
+    """Format a fractional annual rate as a percentage with two decimal places."""
+    return f"{value * 100:.2f}".replace(".", ",") + "%"
+
+
+def describe_analytics(database: Database, lots: list[dict], today: date) -> dict:
+    """Describe full-horizon flows and completed receipts for the provided purchases."""
+
+    # Use the same date for all purchase histories and their presentation status.
+    purchases = [get_purchase_cash_flows(database, lot["id"], today=today) for lot in lots]
+    summary = summarize_receipts(purchases, today=today)
+    active = [lot for lot in lots if not lot["closed"]]
+    summary["status"] = "ожидаемые" if any(
+        flow["status"] == "expected" or flow["date"] > today.isoformat()
+        for purchase in purchases for flow in purchase["flows"] if flow["kind"] != "purchase"
+    ) else "фактические"
+    summary["preliminary"] = any(lot["has_overdue_payments"] for lot in lots)
+    active_ids = {lot["id"] for lot in active}
+    active_flows = [flow for purchase in purchases if purchase["lot_id"] in active_ids for flow in purchase["flows"]]
+    summary["active_status"] = "ожидаемые" if any(
+        flow["status"] == "expected" or flow["date"] > today.isoformat()
+        for flow in active_flows if flow["kind"] != "purchase"
+    ) else "фактические"
+    if not active:
+        summary["active_status"] = "нет действующих покупок"
+    summary["active_preliminary"] = any(lot["has_overdue_payments"] for lot in active)
+    return summary
 
 
 @purchase_pages.route("/purchases/new", methods=["GET", "POST"])
@@ -247,10 +279,18 @@ def render_portfolio(database: Database, *, closed: bool = False):
         abort(400, description="Unsupported portfolio currency.")
 
     # Share currency selection and position rules between the portfolio and closed history.
+    today = date.today()
+    positions = list_positions(database, currency=currency, closed=closed, today=today)
+    all_lots = [get_lot_details(database, lot["id"], today=today) for lot in database.list_lots()
+                if lot["currency"] == currency]
+    for position in positions:
+        position["returns"] = get_position_returns(database, position["isin"], today=today)
     return render_template(
-        "index.html", positions=list_positions(database, currency=currency, closed=closed), history=closed,
+        "index.html", positions=positions, history=closed,
         currency=currency, currencies=CURRENCIES, saved=request.args.get("saved") == "1" and not closed,
         deleted=request.args.get("deleted") == "1", issue_saved=request.args.get("issue_saved") == "1",
+        returns=get_portfolio_returns(database, currency=currency, today=today),
+        summary=describe_analytics(database, all_lots, today),
     )
 
 
@@ -260,12 +300,15 @@ def issue_details(database: Database, isin: str):
     """Render the ISIN position with all purchases, or return 404 when no position exists."""
 
     # Resolve the position from its shared ISIN rather than an arbitrary purchase.
-    position = get_position_details(database, isin)
+    today = date.today()
+    position = get_position_details(database, isin, today=today)
     if position is None:
         abort(404, description="Position not found.")
 
     # Show the complete calendar and both active and closed purchases in their canonical parent page.
-    return render_template("issue_details.html", position=position)
+    return render_template("issue_details.html", position=position,
+                           returns=get_position_returns(database, isin, today=today),
+                           summary=describe_analytics(database, position["lots"], today))
 
 
 @purchase_pages.route("/issues/<isin>/edit", methods=["GET", "POST"])
@@ -310,12 +353,20 @@ def purchase_details(database: Database, lot_id: int):
     """Render the selected purchase with its shared calendar, or return 404 for an unknown lot_id."""
 
     # Resolve an existing purchase before rendering its details.
-    lot = get_lot_details(database, lot_id)
+    today = date.today()
+    lot = get_lot_details(database, lot_id, today=today)
     if lot is None:
         abort(404, description="Purchase not found.")
 
     # Present the same stored fields and current state as the portfolio list.
-    return render_template("purchase_details.html", lot=lot)
+    purchase = get_purchase_cash_flows(database, lot_id, today=today)
+    simple = simple_annual_return(purchase)
+    annual = {"rate": None, "reason": "missing_redemption"} if simple["reason"] == "missing_redemption" else xirr(
+        purchase["flows"]
+    )
+    return render_template("purchase_details.html", lot=lot, purchase=purchase,
+                           returns={"xirr": annual, "simple_return": simple},
+                           summary=describe_analytics(database, [lot], today))
 
 
 @purchase_pages.route("/purchases/<int:lot_id>/payments/<int:event_id>/confirm", methods=["GET", "POST"])

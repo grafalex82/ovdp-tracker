@@ -1,0 +1,44 @@
+{% macro rate(result) -%}
+  {%- if result.rate is not none -%}{{ result.rate|annual_rate }}
+  {%- else -%}Не определена: {{ {
+    'missing_sign': 'нет поступлений и вложений обоих знаков',
+    'zero_duration': 'нулевой срок',
+    'multiple_roots': 'несколько решений XIRR',
+    'numerical_failure': 'численный расчёт не удался',
+    'missing_redemption': 'нет погашения остатка',
+    'no_active_purchases': 'нет действующих покупок'
+  }.get(result.reason, 'расчёт недоступен') }}{%- endif -%}
+{%- endmacro %}
+
+{% macro returns_block(returns, summary, currency, purchase=none) %}
+  <h2>Прибыль и доходность</h2>
+  {% if purchase is none %}
+  <p class="hint">Доходности и ожидаемая прибыль — за весь срок действующих покупок, включая их прежние
+    продажи и выплаты; закрытые покупки исключены. Полученная прибыль включает все покупки.
+    Показатели действующих покупок: {{ summary.active_status }}{% if summary.active_preliminary %},
+    предварительные из-за выплат, требующих подтверждения{% endif %}.</p>
+  {% else %}
+  <p class="hint">Доходности и прибыль за весь срок покупки: {{ summary.status }}{% if summary.preliminary %},
+    предварительные из-за выплат, требующих подтверждения{% endif %}.</p>
+  {% endif %}
+  <dl class="purchase-fields">
+    <div><dt>Полученная прибыль на сегодня</dt><dd>{{ summary.realized_profit|money }} {{ currency }}</dd></div>
+    <div><dt>Прибыль за весь срок{% if summary.status == 'ожидаемые' or purchase is none %} · прогноз{% endif %}</dt>
+      <dd>{% if purchase is not none %}{{ purchase.expected_profit|money }} {{ currency }}
+        {% elif returns.purchase_ids %}{{ returns.expected_profit|money }} {{ currency }}
+        {% else %}Не определена: нет действующих покупок{% endif %}</dd></div>
+    <div><dt>XIRR, % годовых · весь срок</dt><dd>{{ rate(returns.xirr) }}</dd></div>
+    <div><dt>Простая доходность, % годовых · весь срок</dt><dd>{{ rate(returns.simple_return) }}</dd></div>
+  </dl>
+{% endmacro %}
+
+{% macro receipt_block(summary, currency) %}
+  <h2>Поступления по всем покупкам</h2>
+  <p class="hint">Полученные купоны — подтверждения до сегодняшней даты включительно;
+    ожидаемые суммы — ещё не подтверждённые выплаты, включая просроченные.</p>
+  <dl class="purchase-fields">
+    <div><dt>Полученные купоны</dt><dd>{{ summary.received_coupons|money }} {{ currency }}</dd></div>
+    <div><dt>Ожидаемые купоны</dt><dd>{{ summary.expected_coupons|money }} {{ currency }}</dd></div>
+    <div><dt>Ожидаемые погашения</dt><dd>{{ summary.expected_redemptions|money }} {{ currency }}</dd></div>
+  </dl>
+{% endmacro %}

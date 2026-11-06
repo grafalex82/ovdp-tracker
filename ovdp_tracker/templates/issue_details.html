@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% from "_payment_status.html" import payment_status %}
+{% from "_analytics.html" import returns_block, receipt_block %}
 {% set breadcrumbs = [('Портфель', url_for('index')), (position.isin, none)] %}
 {% block title %}{{ position.isin }} — ОВДП Трекер{% endblock %}
 {% block main_class %}portfolio{% endblock %}
@@ -33,6 +34,8 @@
       </dl>
       <p class="hint">Оставшиеся купоны — общие даты от сегодня включительно с положительной неподтверждённой
         выплатой хотя бы одной действующей покупки. Каждая дата считается один раз.</p>
+      {{ returns_block(returns, summary, position.currency) }}
+      {{ receipt_block(summary, position.currency) }}
       <h2>Общий календарь выпуска</h2>
       <p class="hint">Календарь един для всех покупок ISIN, включая даты до покупки.
         Количество рассчитано по владению на дату события: покупка, купон, продажи, погашение.

@@ -80,6 +80,7 @@ def test_shared_dates_count_once_while_confirmations_preserve_calendar_totals(
 
     # Aggregate seven and five bonds, counting dates rather than purchases or individual bonds.
     monkeypatch.setattr("ovdp_tracker.portfolio.date", LocalDate)
+    monkeypatch.setattr("ovdp_tracker.web.date", LocalDate)
     position, = list_positions(database)
     assert position["remaining_coupon_count"] == count
     event = position["calendar"][2]
