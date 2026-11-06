@@ -3,6 +3,7 @@
 from calendar import monthrange
 from datetime import date
 from decimal import Decimal, localcontext
+from fractions import Fraction
 import math
 
 from .db import Database
@@ -371,6 +372,23 @@ def summarize_balances(lots: list[dict]) -> dict:
         "nominal": _sum_amounts(operation_amount(parse_money(lot["nominal"]), lot["remaining_quantity"])
                                 for lot in lots),
     }
+
+
+def calculate_allocations(positions: list[dict], *, currency: str) -> dict[str, dict]:
+    """Return exact current costs and fractional portfolio shares for active positions in currency.
+
+    Exclude closed positions and purchases through their current remaining quantities. A zero total cost yields
+    None shares; otherwise each share is an exact Fraction without rounding the underlying monetary amounts.
+    """
+
+    # Keep only active positions in the selected currency and sum their remaining purchase costs exactly.
+    costs = {position["isin"]: summarize_balances(position["lots"])["cost"] for position in positions
+             if position["currency"] == currency and not position["closed"]}
+    total = _sum_amounts(costs.values())
+
+    # Represent each share as an exact ratio and leave a zero denominator explicitly undefined.
+    return {isin: {"cost": cost, "share": Fraction(cost) / Fraction(total) if total else None}
+            for isin, cost in costs.items()}
 
 
 def _add_months(day: date, months: int) -> date:

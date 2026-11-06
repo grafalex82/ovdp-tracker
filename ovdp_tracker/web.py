@@ -8,9 +8,9 @@ import json
 from flask import Blueprint, abort, current_app, jsonify, redirect, render_template, request, url_for
 from itsdangerous import BadSignature
 
-from .analytics import (get_portfolio_returns, get_position_returns, get_purchase_cash_flows, maturity_distribution,
-                        monthly_payment_totals, simple_annual_return, summarize_balances, summarize_operations,
-                        summarize_receipts, xirr)
+from .analytics import (calculate_allocations, get_portfolio_returns, get_position_returns, get_purchase_cash_flows,
+                        maturity_distribution, monthly_payment_totals, simple_annual_return, summarize_balances,
+                        summarize_operations, summarize_receipts, xirr)
 from .db import Database, DatabaseError
 from .issues import edit_issue as save_issue_correction
 from .money import operation_amount, parse_money
@@ -64,6 +64,16 @@ def format_money(value: str) -> str:
 def format_annual_rate(value) -> str:
     """Format a fractional annual rate as a percentage with two decimal places."""
     return f"{value * 100:.2f}".replace(".", ",") + "%"
+
+
+@purchase_pages.app_template_filter("portfolio_share")
+def format_portfolio_share(value) -> str:
+    """Format an exact fractional portfolio share as a percentage rounded to two decimal places."""
+
+    # Round the rational percentage directly to hundredths without an intermediate decimal approximation.
+    hundredths = round(value * 10000)
+    whole, fraction = divmod(hundredths, 100)
+    return f"{whole},{fraction:02d}%"
 
 
 def describe_analytics(database: Database, lots: list[dict], today: date) -> dict:
@@ -334,8 +344,11 @@ def render_portfolio(database: Database, *, closed: bool = False):
     positions = list_positions(database, currency=currency, closed=closed, today=today)
     all_lots = [get_lot_details(database, lot["id"], today=today) for lot in database.list_lots()
                 if lot["currency"] == currency]
+    allocations = calculate_allocations(positions, currency=currency)
     for position in positions:
         position["returns"] = get_position_returns(database, position["isin"], today=today)
+        if not closed:
+            position["allocation"] = allocations[position["isin"]]
     return render_template(
         "index.html", positions=positions, history=closed,
         currency=currency, currencies=CURRENCIES, saved=request.args.get("saved") == "1" and not closed,

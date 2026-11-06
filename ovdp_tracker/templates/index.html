@@ -38,6 +38,10 @@
       </form>
       </div>
       {% if positions %}
+      {% if not history %}
+      <p class="hint">Доля в портфеле — себестоимость остатка ISIN относительно себестоимости всех действующих
+        остатков выбранной валюты. Проданные и погашенные части исключены; это не рыночная стоимость.</p>
+      {% endif %}
       <div class="table-scroll" role="region" aria-label="Позиции {{ currency }}" tabindex="0">
         <table class="positions-table">
           <caption>{% if history %}Закрытые{% else %}Действующие{% endif %} позиции · {{ currency }}.
@@ -46,7 +50,8 @@
             <tr><th scope="col">ISIN</th><th scope="col">Количество</th>
               <th scope="col">Купон</th>
               <th scope="col">Дата купона</th><th scope="col">Осталось купонов</th><th scope="col">Погашение</th>
-              <th scope="col">Доходность</th><th scope="col">Ожидаемая доходность, % годовых</th></tr>
+              <th scope="col">Доходность</th><th scope="col">Ожидаемая доходность, % годовых</th>
+              {% if not history %}<th scope="col" class="number">Доля в портфеле</th>{% endif %}</tr>
           </thead>
           <tbody>
             {% for position in positions %}
@@ -65,6 +70,9 @@
               <td>{% if position.nominal_rate %}{{ position.nominal_rate|replace('.', ',') }}%
                 {% else %}Не указана{% endif %}</td>
               <td>{{ rate(position.returns.xirr) }}</td>
+              {% if not history %}<td class="number">{% if position.allocation.share is not none %}
+                {{ position.allocation.share|portfolio_share }}{% else %}Не определена: нулевая себестоимость
+                остатков{% endif %}</td>{% endif %}
             </tr>
             {% endfor %}
           </tbody>
