@@ -20,6 +20,8 @@
       <dl class="purchase-fields">
         <div><dt>Валюта выпуска</dt><dd>{{ position.currency }}</dd></div>
         <div><dt>Осталось облигаций</dt><dd>{{ position.remaining_quantity }}</dd></div>
+        <div><dt>Себестоимость остатка</dt><dd>{{ balances.cost|money }} {{ position.currency }}</dd></div>
+        <div><dt>Номинал остатка</dt><dd>{{ balances.nominal|money }} {{ position.currency }}</dd></div>
         <div><dt>Номинал одной облигации</dt><dd>{{ position.nominal|money }} {{ position.currency }}</dd></div>
         <div><dt>Дата выпуска</dt><dd>{{ position.issue_date or 'Не указана' }}</dd></div>
         <div><dt>Номинальная ставка</dt>
@@ -32,6 +34,7 @@
         <div><dt>Осталось купонов</dt><dd>{{ position.remaining_coupon_count }}</dd></div>
         <div><dt>Дата погашения</dt><dd>{{ position.maturity_date }}</dd></div>
       </dl>
+      <p class="hint">Себестоимость и номинал относятся к текущему остатку и не являются рыночной стоимостью.</p>
       <p class="hint">Оставшиеся купоны — общие даты от сегодня включительно с положительной неподтверждённой
         выплатой хотя бы одной действующей покупки. Каждая дата считается один раз.</p>
       {{ returns_block(returns, summary, position.currency) }}

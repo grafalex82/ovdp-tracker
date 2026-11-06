@@ -8,8 +8,8 @@ import json
 from flask import Blueprint, abort, current_app, jsonify, redirect, render_template, request, url_for
 from itsdangerous import BadSignature
 
-from .analytics import (get_portfolio_returns, get_position_returns, get_purchase_cash_flows, simple_annual_return,
-                        summarize_operations, summarize_receipts, xirr)
+from .analytics import (get_portfolio_returns, get_position_returns, get_purchase_cash_flows, maturity_distribution,
+                        simple_annual_return, summarize_balances, summarize_operations, summarize_receipts, xirr)
 from .db import Database, DatabaseError
 from .issues import edit_issue as save_issue_correction
 from .money import operation_amount, parse_money
@@ -304,16 +304,18 @@ def statistics(database: Database):
             error = "Укажите корректные даты периода."
 
     # Keep an invalid range visible without evaluating operations or displaying misleading totals.
-    totals = returns = summary = None
+    totals = returns = summary = balances = distribution = None
     if not error:
         totals = summarize_operations(database, currency=currency, start=start, end=end, today=today)
         lots = [get_lot_details(database, lot["id"], today=today) for lot in database.list_lots()
                 if lot["currency"] == currency]
         returns = get_portfolio_returns(database, currency=currency, today=today)
         summary = describe_analytics(database, lots, today)
+        balances = summarize_balances(lots)
+        distribution = maturity_distribution(lots, today=today)
     return render_template("statistics.html", currency=currency, currencies=CURRENCIES, period=period,
                            start=start_value, end=end_value, error=error, totals=totals, returns=returns,
-                           summary=summary), 400 if error else 200
+                           summary=summary, balances=balances, distribution=distribution), 400 if error else 200
 
 
 def render_portfolio(database: Database, *, closed: bool = False):
@@ -354,7 +356,8 @@ def issue_details(database: Database, isin: str):
     # Show the complete calendar and both active and closed purchases in their canonical parent page.
     return render_template("issue_details.html", position=position,
                            returns=get_position_returns(database, isin, today=today),
-                           summary=describe_analytics(database, position["lots"], today))
+                           summary=describe_analytics(database, position["lots"], today),
+                           balances=summarize_balances(position["lots"]))
 
 
 @purchase_pages.route("/issues/<isin>/edit", methods=["GET", "POST"])

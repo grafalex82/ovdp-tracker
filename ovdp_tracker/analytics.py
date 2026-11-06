@@ -1,5 +1,6 @@
 """Build exact purchase cash flows and distinguish realized from full-horizon profit."""
 
+from calendar import monthrange
 from datetime import date
 from decimal import Decimal, localcontext
 import math
@@ -312,6 +313,43 @@ def summarize_operations(database: Database, *, currency: str, start: date | Non
         [flow["amount"] for flow in completed] + [flow["cost_basis"].copy_negate() for flow in completed]
     )
     return totals
+
+
+def summarize_balances(lots: list[dict]) -> dict:
+    """Return the quantity, exact cost and nominal value of the described purchases' current balances."""
+
+    # Value each remaining portion using its own purchase price and the issue nominal.
+    return {
+        "quantity": sum(lot["remaining_quantity"] for lot in lots),
+        "cost": _sum_amounts(operation_amount(parse_money(lot["purchase_price"]), lot["remaining_quantity"])
+                             for lot in lots),
+        "nominal": _sum_amounts(operation_amount(parse_money(lot["nominal"]), lot["remaining_quantity"])
+                                for lot in lots),
+    }
+
+
+def _add_months(day: date, months: int) -> date:
+    # Clamp the day to the end of the target calendar month when necessary.
+    year, month = divmod(day.year * 12 + day.month - 1 + months, 12)
+    month += 1
+    return date(year, month, min(day.day, monthrange(year, month)[1]))
+
+
+def maturity_distribution(lots: list[dict], *, today: date) -> list[dict]:
+    """Group described current balances by maturity relative to today using calendar-month boundaries."""
+
+    # Set exclusive upper bounds so each boundary belongs to the next group.
+    boundaries = [today, _add_months(today, 3), _add_months(today, 6), _add_months(today, 12)]
+    groups = [[] for _ in range(5)]
+    for lot in lots:
+        if not lot["remaining_quantity"]:
+            continue
+        maturity = date.fromisoformat(lot["maturity_date"])
+        index = next((index for index, boundary in enumerate(boundaries) if maturity < boundary), 4)
+        groups[index].append(lot)
+
+    # Return every group, including empty ones, with exact and independently calculated totals.
+    return [summarize_balances(group) for group in groups]
 
 
 def _combine_purchase_returns(purchases: list[dict], currency: str) -> dict:

@@ -44,5 +44,32 @@
           <dd>{{ totals.realized_profit|money }} {{ currency }}</dd></div>
       </dl>
       {{ returns_block(returns, summary, currency) }}
+      <h2>Текущие остатки</h2>
+      <p class="hint">Себестоимость и номинал рассчитаны на сегодня по оставшимся бумагам,
+        независимо от периода операций; это не рыночная стоимость.</p>
+      <dl class="purchase-fields">
+        <div><dt>Количество облигаций</dt><dd>{{ balances.quantity }}</dd></div>
+        <div><dt>Себестоимость остатка</dt><dd>{{ balances.cost|money }} {{ currency }}</dd></div>
+        <div><dt>Номинал остатка</dt><dd>{{ balances.nominal|money }} {{ currency }}</dd></div>
+      </dl>
+      <h2>Распределение по срокам погашения</h2>
+      <p class="hint">Просроченное погашение остаётся в остатках до подтверждения. Границы 3, 6 и 12
+        календарных месяцев входят в следующую группу; погашение сегодня входит в группу до 3 месяцев.</p>
+      <div class="table-scroll" role="region" aria-label="Распределение по срокам погашения" tabindex="0">
+        <table>
+          <caption>Текущие остатки · {{ currency }}</caption>
+          <thead><tr><th scope="col">Срок погашения</th><th scope="col" class="number">Количество</th>
+            <th scope="col" class="number">Себестоимость, {{ currency }}</th>
+            <th scope="col" class="number">Номинал, {{ currency }}</th></tr></thead>
+          <tbody>
+            {% for label in ['Просроченное неподтверждённое погашение', 'До 3 месяцев', 'От 3 до 6 месяцев',
+              'От 6 до 12 месяцев', 'От 12 месяцев'] %}
+            {% set group = distribution[loop.index0] %}
+            <tr><th scope="row">{{ label }}</th><td class="number">{{ group.quantity }}</td>
+              <td class="number">{{ group.cost|money }}</td><td class="number">{{ group.nominal|money }}</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
       {% endif %}
 {% endblock %}
