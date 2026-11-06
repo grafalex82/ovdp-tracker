@@ -275,17 +275,8 @@ def get_purchase_cash_flows(database: Database, lot_id: int, *, today: date | No
     }
 
 
-def get_portfolio_returns(database: Database, *, currency: str, today: date | None = None) -> dict:
-    """Return full-horizon expected returns of active purchases in currency as of today.
-
-    Include complete purchase histories, combine cash flows by date and return fractional XIRR and simple rates.
-    Exclude closed purchases; today defaults to the local date. An empty portfolio has no annual returns.
-    """
-
-    # Select this currency's active purchases while preserving each included purchase's entire history.
-    today = today if today is not None else date.today()
-    purchases = [get_purchase_cash_flows(database, lot["id"], today=today) for lot in database.list_lots()
-                 if lot["currency"] == currency]
+def _combine_purchase_returns(purchases: list[dict], currency: str) -> dict:
+    # Exclude closed purchases while preserving the complete history of each active purchase.
     purchases = [purchase for purchase in purchases if purchase["remaining_quantity"] > 0]
     if not purchases:
         return {
@@ -315,3 +306,38 @@ def get_portfolio_returns(database: Database, *, currency: str, today: date | No
         "currency": currency, "purchase_ids": [purchase["lot_id"] for purchase in purchases],
         "flows": combined, "expected_profit": profit, "xirr": annual_xirr, "simple_return": simple,
     }
+
+
+def get_portfolio_returns(database: Database, *, currency: str, today: date | None = None) -> dict:
+    """Return full-horizon expected returns of active purchases in currency as of today.
+
+    Include complete purchase histories, combine cash flows by date and return fractional XIRR and simple rates.
+    Exclude closed purchases; today defaults to the local date. An empty portfolio has no annual returns.
+    """
+
+    # Resolve purchase histories only in the requested currency using the common aggregation rules.
+    today = today if today is not None else date.today()
+    purchases = [get_purchase_cash_flows(database, lot["id"], today=today) for lot in database.list_lots()
+                 if lot["currency"] == currency]
+    return _combine_purchase_returns(purchases, currency)
+
+
+def get_position_returns(database: Database, isin: str, *, today: date | None = None) -> dict | None:
+    """Return expected returns for active purchases of isin, or None if it has no portfolio position.
+
+    Use the shared issue currency and complete purchase histories as of today, defaulting to the local date.
+    Report the reason for unavailable rates when the position has no active purchases or a calculation fails.
+    """
+
+    # Resolve the saved issue and its purchases without including other ISINs in the same currency.
+    issue = database.get_issue_by_isin(isin)
+    if issue is None:
+        return None
+    lots = [lot for lot in database.list_lots() if lot["issue_id"] == issue["id"]]
+    if not lots:
+        return None
+
+    # Apply the same full-horizon aggregation and active-purchase rules as portfolio totals.
+    today = today if today is not None else date.today()
+    purchases = [get_purchase_cash_flows(database, lot["id"], today=today) for lot in lots]
+    return {**_combine_purchase_returns(purchases, issue["currency"]), "isin": issue["isin"]}
