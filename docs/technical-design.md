@@ -2,9 +2,9 @@
 
 Документ описывает текущую реализацию приложения и технические контракты, перенесённые из README.
 Пользовательские сценарии и запуск находятся в [руководстве пользователя](../readme.md).
-План развития и проектные решения MVP находятся в
-[OpenSpec design](../openspec/changes/initial-bond-portfolio-mvp/design.md),
-а требования — в [спецификациях изменения](../openspec/changes/initial-bond-portfolio-mvp/specs).
+История проектных решений MVP находится в
+[архиве OpenSpec](../openspec/changes/archive/2026-11-06-initial-bond-portfolio-mvp/design.md),
+а актуальные требования — в [основных спецификациях](../openspec/specs).
 Результаты сквозной и браузерной проверки MVP приведены в [отчёте проверки](mvp-verification.md).
 
 ## Архитектура и границы модулей
