@@ -292,6 +292,28 @@ def summarize_receipts(purchases: list[dict], *, today: date) -> dict:
     }
 
 
+def summarize_operations(database: Database, *, currency: str, start: date | None, end: date | None,
+                         today: date) -> dict:
+    """Return exact operation totals and realized profit in currency for an inclusive date range."""
+
+    # Select actual purchase-specific flows by their operation dates, including closed purchases.
+    purchases = [get_purchase_cash_flows(database, lot["id"], today=today) for lot in database.list_lots()
+                 if lot["currency"] == currency]
+    flows = [flow for purchase in purchases for flow in purchase["flows"] if flow["status"] == "actual"
+             and (start is None or flow["date"] >= start.isoformat())
+             and (end is None or flow["date"] <= end.isoformat())]
+
+    # Keep purchases positive and subtract the original cost of completed disposals from period profit.
+    totals = {kind: _sum_amounts(flow["amount"] for flow in flows if flow["kind"] == kind)
+              for kind in ("purchase", "coupon", "redemption", "sale")}
+    totals["purchase"] = totals["purchase"].copy_abs()
+    completed = [flow for flow in flows if flow["kind"] != "purchase" and flow["date"] <= today.isoformat()]
+    totals["realized_profit"] = _sum_amounts(
+        [flow["amount"] for flow in completed] + [flow["cost_basis"].copy_negate() for flow in completed]
+    )
+    return totals
+
+
 def _combine_purchase_returns(purchases: list[dict], currency: str) -> dict:
     # Exclude closed purchases while preserving the complete history of each active purchase.
     purchases = [purchase for purchase in purchases if purchase["remaining_quantity"] > 0]

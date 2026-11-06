@@ -1,5 +1,6 @@
 """Adapt the independent database API to Flask request handlers."""
 
+from calendar import monthrange
 from datetime import date
 from functools import wraps
 import json
@@ -8,7 +9,7 @@ from flask import Blueprint, abort, current_app, jsonify, redirect, render_templ
 from itsdangerous import BadSignature
 
 from .analytics import (get_portfolio_returns, get_position_returns, get_purchase_cash_flows, simple_annual_return,
-                        summarize_receipts, xirr)
+                        summarize_operations, summarize_receipts, xirr)
 from .db import Database, DatabaseError
 from .issues import edit_issue as save_issue_correction
 from .money import operation_amount, parse_money
@@ -268,6 +269,51 @@ def payment_list(database: Database):
         "payments.html", currency=currency, currencies=CURRENCIES, start=start_value, end=end_value,
         error=error, groups=groups,
     ), 400 if error else 200
+
+
+@purchase_pages.get("/statistics")
+@with_database
+def statistics(database: Database):
+    """Render operation totals for an inclusive period and full-horizon portfolio returns."""
+
+    # Resolve the selected currency and period without silently changing unsupported values.
+    currency = request.args.get("currency", "UAH")
+    period = request.args.get("period", "month")
+    if currency not in CURRENCIES or period not in {"month", "quarter", "year", "all", "custom"}:
+        abort(400, description="Unsupported statistics filter.")
+    today = date.today()
+    start_value = request.args.get("start", "")
+    end_value = request.args.get("end", "")
+    start = end = None
+    error = None
+
+    # Calculate calendar preset boundaries or validate the user's inclusive custom dates.
+    if period in {"month", "quarter", "year"}:
+        first_month = today.month if period == "month" else (today.month - 1) // 3 * 3 + 1
+        first_month = 1 if period == "year" else first_month
+        last_month = first_month if period == "month" else first_month + 2 if period == "quarter" else 12
+        start = date(today.year, first_month, 1)
+        end = date(today.year, last_month, monthrange(today.year, last_month)[1])
+    elif period == "custom":
+        try:
+            start = parse_date(start_value) if start_value else None
+            end = parse_date(end_value) if end_value else None
+            if start and end and start > end:
+                error = "Начало периода не может быть позже его окончания."
+        except (TypeError, ValueError):
+            error = "Укажите корректные даты периода."
+
+    # Keep an invalid range visible without evaluating operations or displaying misleading totals.
+    totals = returns = summary = None
+    if not error:
+        totals = summarize_operations(database, currency=currency, start=start, end=end, today=today)
+        lots = [get_lot_details(database, lot["id"], today=today) for lot in database.list_lots()
+                if lot["currency"] == currency]
+        returns = get_portfolio_returns(database, currency=currency, today=today)
+        summary = describe_analytics(database, lots, today)
+    return render_template("statistics.html", currency=currency, currencies=CURRENCIES, period=period,
+                           start=start_value, end=end_value, error=error, totals=totals, returns=returns,
+                           summary=summary), 400 if error else 200
 
 
 def render_portfolio(database: Database, *, closed: bool = False):

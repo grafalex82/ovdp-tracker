@@ -13,7 +13,7 @@
       <header class="site-header">
         <p class="site-name"><span class="site-logo" aria-hidden="true">О</span>ОВДП Трекер</p>
         <nav aria-label="Основные разделы" class="section-nav">
-          {% if request.endpoint == 'purchases.payment_list' %}
+          {% if request.endpoint in ['purchases.payment_list', 'purchases.statistics'] %}
           <a href="{{ url_for('index') }}">Портфель</a>
           {% elif request.endpoint == 'index' %}
           <span aria-current="page">Портфель</span>
@@ -25,7 +25,11 @@
           {% else %}
           <a href="{{ url_for('purchases.payment_list') }}">Выплаты</a>
           {% endif %}
-          <span aria-disabled="true">Статистика</span>
+          {% if request.endpoint == 'purchases.statistics' %}
+          <span aria-current="page">Статистика</span>
+          {% else %}
+          <a href="{{ url_for('purchases.statistics') }}">Статистика</a>
+          {% endif %}
         </nav>
       </header>
       <div class="page-content">

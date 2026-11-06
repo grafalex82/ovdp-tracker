@@ -30,7 +30,7 @@ def test_available_pages_share_sections_and_current_breadcrumb(app, lot, page, c
     assert response.status_code == 200
     assert re.search(r'<(?:a|span)\b[^>]*aria-current="(?:page|true)"[^>]*>Портфель</', sections)
     assert '<a href="/payments">Выплаты</a>' in sections
-    assert '<span aria-disabled="true">Статистика</span>' in sections
+    assert '<a href="/statistics">Статистика</a>' in sections
     assert "Скоро" not in sections
     assert "Добавить облигацию" not in sections
     assert "Закрытые позиции" not in sections

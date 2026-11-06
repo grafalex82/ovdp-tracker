@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+{% from "_analytics.html" import returns_block %}
+{% set breadcrumbs = [('Статистика', none)] %}
+{% block title %}Статистика — ОВДП Трекер{% endblock %}
+{% block content %}
+      <div class="page-heading"><div><h1>Статистика</h1>
+        <p class="subtitle">Денежные операции и доходность портфеля</p></div></div>
+      <form method="get" class="payment-filters">
+        <label class="field" for="currency">Валюта выпуска
+          <select id="currency" name="currency">
+            {% for code in currencies %}<option value="{{ code }}"{% if code == currency %} selected{% endif %}>
+              {{ code }}</option>{% endfor %}
+          </select>
+        </label>
+        <label class="field" for="period">Период
+          <select id="period" name="period">
+            {% for value, label in [('month', 'Текущий месяц'), ('quarter', 'Текущий квартал'),
+              ('year', 'Текущий год'), ('all', 'Весь период'), ('custom', 'Произвольный диапазон')] %}
+            <option value="{{ value }}"{% if value == period %} selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+          </select>
+        </label>
+        <label class="field" for="start">С даты
+          <input id="start" name="start" type="date" value="{{ start }}"{% if error %} aria-invalid="true"{% endif %}>
+        </label>
+        <label class="field" for="end">По дату
+          <input id="end" name="end" type="date" value="{{ end }}"{% if error %} aria-invalid="true"{% endif %}>
+        </label>
+        <button type="submit">Показать</button>
+      </form>
+      <p class="hint">Для произвольного диапазона обе границы включены; пустая граница не ограничивает период.
+        Выплаты учитываются по фактической дате, покупки и продажи — по датам операций.</p>
+      {% if error %}<p class="error" role="alert">{{ error }}</p>{% endif %}
+      {% if totals is not none %}
+      <h2>Операции за выбранный период</h2>
+      <p class="hint">Купоны и погашения включают только подтверждённые поступления. Выручка и погашения
+        включают возврат вложенной суммы; это не прибыль целиком.</p>
+      <dl class="purchase-fields">
+        <div><dt>Покупки</dt><dd>{{ totals.purchase|money }} {{ currency }}</dd></div>
+        <div><dt>Полученные купоны</dt><dd>{{ totals.coupon|money }} {{ currency }}</dd></div>
+        <div><dt>Полученные погашения</dt><dd>{{ totals.redemption|money }} {{ currency }}</dd></div>
+        <div><dt>Выручка от продаж</dt><dd>{{ totals.sale|money }} {{ currency }}</dd></div>
+        <div><dt>Полученная прибыль за период на сегодня</dt>
+          <dd>{{ totals.realized_profit|money }} {{ currency }}</dd></div>
+      </dl>
+      {{ returns_block(returns, summary, currency) }}
+      {% endif %}
+{% endblock %}
