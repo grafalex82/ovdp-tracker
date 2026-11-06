@@ -18,7 +18,7 @@
         {% include 'unsaved_baseline.html' %}
         <div class="form-panel">
           <label class="field">Дата продажи
-            <input type="date" name="sale_date" value="{{ values.get('sale_date', '') }}" required>
+            <input type="date" name="sale_date" value="{{ values.get('sale_date', '') }}" max="{{ today }}" required>
           </label>
           <label class="field">Количество облигаций
             <input type="number" name="quantity" value="{{ values.get('quantity', '') }}"

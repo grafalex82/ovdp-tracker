@@ -12,6 +12,7 @@
   <div class="field">
     <label for="{{ name }}">{{ label }}</label>
     <input id="{{ name }}" name="{{ name }}" type="{{ type }}" value="{{ values.get(name, '') }}"
+           {% if name == 'purchase_date' %}max="{{ today }}"{% endif %}
            {% if required %}required{% endif %} {% if inputmode %}inputmode="{{ inputmode }}"{% endif %}
            {% if list_id %}list="{{ list_id }}"{% endif %}
            {% if errors.get(name) %}aria-invalid="true" aria-describedby="{{ name }}-error"{% endif %}>

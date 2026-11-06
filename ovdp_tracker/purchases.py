@@ -247,8 +247,7 @@ def validate_purchase(values: dict, today: date) -> dict:
     Require a completed manual, automatic or existing-issue mode; automatic drafts must
     have loaded_isin matching the normalized current identifier.
 
-    Temporarily allow future purchase dates while still rejecting a purchase after maturity.
-    Keep today available for restoring the date cutoff without changing callers.
+    Reject purchase dates after the supplied local today or after issue maturity.
     Return canonical issue fields, payments and independent purchase fields in one new
     dictionary. Raise PurchaseValidationError with field messages when either the issue
     or purchase is invalid. This function validates values without persisting them.
@@ -287,7 +286,10 @@ def validate_purchase(values: dict, today: date) -> dict:
     except ValueError as error:
         errors["purchase_price"] = str(error)
     try:
-        purchase["purchase_date"] = parse_date(values.get("purchase_date", "").strip()).isoformat()
+        purchase_day = parse_date(values.get("purchase_date", "").strip())
+        if purchase_day > today:
+            raise ValueError("Purchase date cannot be in the future; planned purchases are not supported.")
+        purchase["purchase_date"] = purchase_day.isoformat()
     except ValueError as error:
         errors["purchase_date"] = str(error)
     maturity_date = purchase.get("maturity_date", values.get("maturity_date", "").strip())
@@ -304,7 +306,7 @@ def create_purchase(database: Database, values: dict, today: date | None = None)
     Use database to resolve the ISIN supplied in values and perform all checks and writes
     in one transaction. For an existing issue, supply its saved metadata and calendar as
     defaults before validating submitted values. Pass today, or the current local date
-    when omitted, to validation; the future-date cutoff is temporarily disabled.
+    when omitted, to validation so dates after that day are rejected.
 
     Call validate_purchase(), then split its result into issue metadata, payment events
     and independent purchase fields. Reject conflicts with an existing issue's metadata

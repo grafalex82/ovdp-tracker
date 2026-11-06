@@ -4,6 +4,9 @@ from datetime import date
 
 import pytest
 
+from ovdp_tracker.messages import user_message
+from ovdp_tracker.portfolio import get_lot_details
+
 
 def test_purchase_edit_checks_history_and_preserves_shared_data(app, database, lot, lot_data):
     # Prepare an independent neighbor, a shared calendar and confirmed payment.
@@ -58,40 +61,59 @@ def test_edit_sale_validates_all_sales_and_keeps_original_on_error(app, database
 @pytest.mark.parametrize("operation, editing", [
     ("purchase", False), ("purchase", True), ("sale", False), ("sale", True),
 ])
-def test_future_dates_are_temporarily_allowed_in_operation_forms(app, database, lot, monkeypatch, operation, editing):
-    # Keep the submitted date in the future regardless of the machine's current calendar date.
+@pytest.mark.parametrize("day, status", [("2026-10-30", 302), ("2026-10-31", 302), ("2026-11-01", 400)])
+def test_operation_dates_respect_local_today(app, database, lot, monkeypatch, operation, editing, day, status):
+    # Freeze the HTTP cutoff and balance date independently of the execution calendar.
     class LocalDate(date):
         @classmethod
         def today(cls):
-            """Return the fixed local day used to check temporarily allowed future operations."""
+            """Return the fixed local day used to check operation date boundaries."""
             return cls(2026, 10, 31)
 
     # Prepare a complete issue and the existing operation needed by each form.
     monkeypatch.setattr("ovdp_tracker.web.date", LocalDate)
+    monkeypatch.setattr("ovdp_tracker.portfolio.date", LocalDate)
     database.add_scheduled_payment(
         issue_id=lot["issue_id"], kind="redemption", planned_date=lot["maturity_date"], amount="1000"
     )
     if operation == "purchase":
         field = "purchase_date"
-        values = {field: "2027-01-01", "purchase_price": "1000", "quantity": "10", "bank_name": "Test bank"}
+        values = {field: day, "purchase_price": "1000", "quantity": "10", "bank_name": "Test bank"}
         path = f'/purchases/{lot["id"]}/edit' if editing else "/purchases/new"
         if not editing:
             values.update({"isin": lot["isin"], "issue_mode": "existing"})
     else:
         field = "sale_date"
-        values = {field: "2027-01-01", "sale_price": "1050", "quantity": "3"}
+        values = {field: day, "sale_price": "1050", "quantity": "10"}
         path = f'/purchases/{lot["id"]}/sales/new'
         if editing:
             sale = database.add_sale(lot_id=lot["id"], sale_date="2025-01-01", sale_price="1000", quantity=3)
             path = f'/purchases/{lot["id"]}/sales/{sale["id"]}/edit'
 
-    # Permit future input in the browser and persist the same date through server validation.
+    # Bound the date picker and verify server validation even when the caller bypasses it.
+    readers = (database.list_lots, database.list_issues, database.list_scheduled_payments,
+               database.list_banks, database.list_sales, database.list_actual_payments)
+    before = [reader() for reader in readers]
+    remaining = get_lot_details(database, lot["id"])["remaining_quantity"]
     with app.test_client() as client:
         html = client.get(path).get_data(as_text=True)
         date_input = html.split(f'name="{field}"', 1)[1].split(">", 1)[0]
-        assert "max=" not in date_input
+        assert 'max="2026-10-31"' in date_input
         response = client.post(path, data=values)
-        assert response.status_code == 302
-    operations = database.list_lots() if operation == "purchase" else database.list_sales(lot["id"])
-    saved = operations[0] if editing else operations[-1]
-    assert saved[field] == "2027-01-01"
+        assert response.status_code == status
+
+    # Preserve rejected drafts and every saved record, or persist valid dates through today inclusively.
+    if status == 400:
+        html = response.get_data(as_text=True)
+        error = ("Purchase date cannot be in the future; planned purchases are not supported."
+                 if operation == "purchase" else "Sale date cannot be in the future.")
+        assert user_message(error) in html
+        assert f'value="{day}"' in html and 'data-unsaved-error="true"' in html
+        assert [reader() for reader in readers] == before
+        assert get_lot_details(database, lot["id"])["remaining_quantity"] == remaining
+    else:
+        operations = database.list_lots() if operation == "purchase" else database.list_sales(lot["id"])
+        saved = operations[0] if editing else operations[-1]
+        assert saved[field] == day
+        if operation == "sale":
+            assert get_lot_details(database, lot["id"])["closed"] is True

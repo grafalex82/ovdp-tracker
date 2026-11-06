@@ -27,13 +27,15 @@ def create_sale(database: Database, lot_id: int, values: dict, today: date) -> d
 
 
 def validate_sale(values: dict, today: date) -> dict:
-    """Return validated sale fields, temporarily allowing future dates while retaining today for compatibility."""
+    """Return validated sale fields from values, rejecting sale dates after the supplied local today."""
 
     # Validate the submitted operation before acquiring the database write lock.
     try:
         day = date.fromisoformat(values.get("sale_date", ""))
     except ValueError as error:
         raise SaleValidationError("Enter a valid sale date.") from error
+    if day > today:
+        raise SaleValidationError("Sale date cannot be in the future.")
     try:
         quantity = parse_quantity(values.get("quantity", ""))
     except ValueError as error:

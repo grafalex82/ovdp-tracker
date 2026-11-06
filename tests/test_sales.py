@@ -45,6 +45,7 @@ def test_partial_and_full_sale_keep_neighbor_and_history(app, database, lot, lot
     {"sale_date": "2025-01-01", "quantity": "1", "sale_price": "0"},
     {"sale_date": "2025-01-01", "quantity": "1", "sale_price": "1000.010"},
     {"sale_date": "invalid", "quantity": "1", "sale_price": "1000"},
+    {"sale_date": "2026-01-02", "quantity": "10", "sale_price": "1000"},
 ])
 def test_invalid_sale_is_rejected_without_writes(database, lot, values):
     with pytest.raises(SaleValidationError):

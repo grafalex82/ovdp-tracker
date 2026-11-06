@@ -187,11 +187,17 @@ def test_zero_coupon_issue_requires_only_redemption(app, database, purchase_form
     assert event["kind"] == "redemption" and event["amount"] == "1000"
 
 
-@pytest.mark.parametrize("day", ["2024-02-15", "2026-10-31", "2026-11-01"])
-def test_purchase_and_coupon_boundaries_include_zero_events(app, database, purchase_form, day):
+@pytest.mark.parametrize("purchase_day, coupon_day", [
+    ("2024-02-15", "2024-02-15"), ("2026-10-31", "2026-10-31"), ("2026-10-31", "2026-11-01"),
+])
+def test_coupon_boundaries_include_zero_events(app, database, purchase_form, purchase_day, coupon_day):
+    # Keep future coupon forecasts valid while the completed purchase stays within the local date cutoff.
     purchase_form.update({
-        "purchase_date": day, "coupons": json.dumps([{"date": day, "amount": "0"}]), "maturity_date": day,
+        "purchase_date": purchase_day, "coupons": json.dumps([{"date": coupon_day, "amount": "0"}]),
+        "maturity_date": coupon_day,
     })
+
+    # Save the entitled zero coupon without creating a fictional receipt.
     with app.test_client() as client:
         assert client.post("/purchases/new", data=purchase_form).status_code == 302
     assert database.list_scheduled_payments()[0]["amount"] == "0"
@@ -207,6 +213,7 @@ def test_purchase_and_coupon_boundaries_include_zero_events(app, database, purch
     ("redemption_amount", "0", "Сумма должна быть больше нуля"),
     ("purchase_date", "2025-02-29", "Введите корректную дату"),
     ("purchase_date", "20240215", "Введите корректную дату"),
+    ("purchase_date", "2026-11-01", "Дата покупки не может быть в будущем"),
     ("maturity_date", "2023-01-01", "Дата погашения не может быть раньше"),
     ("maturity_date", "2027-02-30", "Введите корректную дату"),
     ("coupons", json.dumps([
