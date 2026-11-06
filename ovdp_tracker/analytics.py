@@ -315,6 +315,51 @@ def summarize_operations(database: Database, *, currency: str, start: date | Non
     return totals
 
 
+def monthly_payment_totals(groups: dict[str, list[dict]], *, start: date | None, end: date | None,
+                           today: date) -> list[dict]:
+    """Return exact expected and actual payment totals per month for filtered purchase payment groups.
+
+    Include empty months. With both bounds omitted, cover the current month through the last expected redemption;
+    an individual open bound extends to the earliest or latest selected payment or the other bound.
+    """
+
+    # Resolve finite display bounds while preserving the date filtering already applied to the events.
+    events = [event for group in groups.values() for event in group]
+    current = today.year * 12 + today.month - 1
+    month_number = lambda day: int(day[:4]) * 12 + int(day[5:7]) - 1
+    months = [month_number(event["display_date"]) for event in events]
+    if start is None and end is None:
+        redemptions = [month_number(event["display_date"]) for event in events
+                       if event["kind"] == "redemption" and event["actual"] is None]
+        first, last = current, max([current] + redemptions)
+    else:
+        start_month = start.year * 12 + start.month - 1 if start else None
+        end_month = end.year * 12 + end.month - 1 if end else None
+        first = start_month if start_month is not None else min([current, end_month] + months)
+        last = end_month if end_month is not None else max([current, start_month] + months)
+
+    # Collect each confirmation or remaining expectation exactly once in its applicable month.
+    buckets = {month: {key: [] for key in ("expected_coupon", "actual_coupon", "expected_redemption",
+                                           "actual_redemption")} for month in range(first, last + 1)}
+    for event in events:
+        month = month_number(event["display_date"])
+        if month not in buckets:
+            continue
+        actual = event["actual"]
+        key = ("actual_" if actual else "expected_") + event["kind"]
+        buckets[month][key].append(parse_money(actual["amount"] if actual else event["planned_amount"]))
+
+    # Sum exact cents, retain empty months and derive each total from its two distinct payment kinds.
+    result = []
+    for month, amounts in buckets.items():
+        totals = {key: _sum_amounts(values) for key, values in amounts.items()}
+        totals["expected_total"] = _sum_amounts((totals["expected_coupon"], totals["expected_redemption"]))
+        totals["actual_total"] = _sum_amounts((totals["actual_coupon"], totals["actual_redemption"]))
+        year, month_index = divmod(month, 12)
+        result.append({"month": f"{year:04d}-{month_index + 1:02d}", **totals})
+    return result
+
+
 def summarize_balances(lots: list[dict]) -> dict:
     """Return the quantity, exact cost and nominal value of the described purchases' current balances."""
 

@@ -58,6 +58,34 @@
         подтверждённые выплаты — по фактической. Пустая граница не ограничивает период.</p>
       {% if error %}<p class="error" role="alert">{{ error }}</p>{% endif %}
       {% if groups is not none %}
+      <h2>Выплаты по месяцам</h2>
+      <p class="hint">Ожидаемые суммы — неподтверждённые выплаты по плановой дате, включая просроченные;
+        полученные — подтверждённые по фактической дате. Итоги складывают купоны и погашения без продаж.
+        Границы дат включены; крайние месяцы могут содержать только часть месяца. Без дат таблица начинается
+        с текущего месяца и заканчивается последним ожидаемым погашением. При одной пустой границе таблица
+        охватывает доступные выплаты и выбранную границу. Месяцы без выплат показаны с нулями.</p>
+      <div class="table-scroll" role="region" aria-label="Выплаты по месяцам" tabindex="0">
+        <table>
+          <caption>Месячные итоги · {{ currency }}</caption>
+          <thead><tr><th scope="col">Месяц</th><th scope="col" class="number">Ожидаемые купоны</th>
+            <th scope="col" class="number">Полученные купоны</th>
+            <th scope="col" class="number">Ожидаемые погашения</th>
+            <th scope="col" class="number">Полученные погашения</th>
+            <th scope="col" class="number">Ожидаемый итог</th>
+            <th scope="col" class="number">Полученный итог</th></tr></thead>
+          <tbody>
+            {% for month in months %}
+            <tr data-month="{{ month.month }}"><th scope="row">{{ month.month }}</th>
+              <td class="number">{{ month.expected_coupon|money }}</td>
+              <td class="number">{{ month.actual_coupon|money }}</td>
+              <td class="number">{{ month.expected_redemption|money }}</td>
+              <td class="number">{{ month.actual_redemption|money }}</td>
+              <td class="number">{{ month.expected_total|money }}</td>
+              <td class="number">{{ month.actual_total|money }}</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
       <h2>Требуют подтверждения</h2>
       {{ payment_table(groups.overdue, 'Прошедшие неподтверждённые выплаты') }}
       <h2>Ближайшие выплаты</h2>

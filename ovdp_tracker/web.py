@@ -9,7 +9,8 @@ from flask import Blueprint, abort, current_app, jsonify, redirect, render_templ
 from itsdangerous import BadSignature
 
 from .analytics import (get_portfolio_returns, get_position_returns, get_purchase_cash_flows, maturity_distribution,
-                        simple_annual_return, summarize_balances, summarize_operations, summarize_receipts, xirr)
+                        monthly_payment_totals, simple_annual_return, summarize_balances, summarize_operations,
+                        summarize_receipts, xirr)
 from .db import Database, DatabaseError
 from .issues import edit_issue as save_issue_correction
 from .money import operation_amount, parse_money
@@ -262,12 +263,14 @@ def payment_list(database: Database):
         error = "Укажите корректные даты периода."
 
     # Keep invalid input visible without evaluating the requested range.
-    groups = None
+    groups = months = None
     if not error:
-        groups = list_payment_events(database, currency=currency, start=start, end=end, today=date.today())
+        today = date.today()
+        groups = list_payment_events(database, currency=currency, start=start, end=end, today=today)
+        months = monthly_payment_totals(groups, start=start, end=end, today=today)
     return render_template(
         "payments.html", currency=currency, currencies=CURRENCIES, start=start_value, end=end_value,
-        error=error, groups=groups,
+        error=error, groups=groups, months=months,
     ), 400 if error else 200
 
 
